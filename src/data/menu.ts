@@ -194,9 +194,9 @@ export const menuCategories: MenuCategory[] = [
 ]
 
 export const menuPromotion = {
-  title: 'Featured Series',
-  lines: ['Featured item one', 'Featured item two', 'Featured item three'],
-  priceLabel: '₱—',
-  image: '', // Example: '/menu/promotion.jpg'
-  imageAlt: 'Featured menu items',
+  title: 'Matcha Series',
+  lines: ['Rose Matcha', 'Strawberry Matcha', 'Matcha Seasalt Foam'],
+  priceLabel: '₱170.00',
+  image: '/menu/matcha-series.png',
+  imageAlt: 'Two Bake’n Brew matcha drinks with strawberry layers',
 }

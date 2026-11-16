@@ -298,19 +298,22 @@ button:disabled {
 }
 .menu-header {
   display: grid;
+  min-height: 0;
   grid-template-columns: var(--rail) 1fr;
   gap: 3vw;
   padding: 12px 16px 12px 0;
   border-bottom: 1px solid #e8e8e4;
 }
 .menu-brand {
+  position: relative;
   display: grid;
+  min-height: 0;
   place-items: center;
   padding: 2vw;
 }
 .menu-logo {
-  width: 100%;
-  aspect-ratio: 183 / 114;
+  position: absolute;
+  inset: clamp(8px, 2vw, 32px);
   background: var(--olive);
   mask-size: contain;
   mask-position: center;
@@ -327,11 +330,11 @@ button:disabled {
   color: #fff;
 }
 .promotion-copy {
-  padding: 1.5vw 3vw;
+  padding: clamp(8px, 1dvh, 20px) 3vw;
   align-self: center;
 }
 .promotion h1 {
-  font-size: clamp(24px, 4vw, 64px);
+  font-size: clamp(22px, min(4vw, 4dvh), 64px);
   font-weight: 700;
   line-height: 1.12;
   letter-spacing: 0.06em;
@@ -341,30 +344,36 @@ button:disabled {
 .promotion ul {
   list-style: none;
   padding: 0;
-  font-size: clamp(10px, 1.5vw, 24px);
+  font-size: clamp(10px, min(1.5vw, 1.4dvh), 24px);
   font-weight: 600;
   line-height: 1.5;
 }
 .promotion-photo {
+  position: relative;
   display: grid;
   place-items: center;
   background: #e7ead7;
   color: #4d6024;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   border-radius: 40% 0 0 40%;
   font-size: clamp(12px, 1.8vw, 24px);
 }
 .promotion-photo img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center 55%;
 }
 .promotion-price {
   position: absolute;
   left: 48%;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: 18%;
+  width: min(18%, 13dvh);
   aspect-ratio: 1;
   border-radius: 50%;
   display: flex;
@@ -373,7 +382,7 @@ button:disabled {
   justify-content: center;
   background: #fff;
   color: #111;
-  font-size: clamp(10px, 1.5vw, 22px);
+  font-size: clamp(10px, min(1.5vw, 1.5dvh), 22px);
   font-weight: 700;
 }
 .promotion-price strong {
@@ -726,7 +735,10 @@ button:disabled {
     padding-right: 8px;
   }
   .promotion-price {
-    display: none;
+    inset: auto 8px 8px auto;
+    transform: none;
+    width: 70px;
+    font-size: 10px;
   }
   .promotion h1 {
     font-size: 22px;
