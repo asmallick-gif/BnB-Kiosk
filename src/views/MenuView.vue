@@ -11,14 +11,17 @@ const categoryNav = ref<HTMLElement | null>(null)
 const activeCategory = ref(menuCategories[0]?.id ?? '')
 const quantities = ref<Record<string, number>>({})
 const reviewDialog = ref<HTMLDialogElement | null>(null)
+const addMoreButton = ref<HTMLButtonElement | null>(null)
 const failedImages = ref(new Set<string>())
 const orderType = computed(() => (route.query.type === 'take-out' ? 'Take-out' : 'Dine-in'))
 const items = menuCategories.flatMap((category) => category.items)
 const orderItems = computed(() => items.filter((item) => (quantities.value[item.id] ?? 0) > 0))
 const itemCount = computed(() => Object.values(quantities.value).reduce((sum, n) => sum + n, 0))
-const total = computed(() =>
+const subtotal = computed(() =>
   items.reduce((sum, item) => sum + item.price * (quantities.value[item.id] ?? 0), 0),
 )
+const discount = 0
+const total = computed(() => subtotal.value - discount)
 const money = (amount: number) =>
   new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount)
 
@@ -60,6 +63,16 @@ watch(activeCategory, async (id) => {
 
 function addItem(item: MenuItem) {
   if (item.available) quantities.value[item.id] = (quantities.value[item.id] ?? 0) + 1
+}
+async function decreaseItem(item: MenuItem) {
+  const quantity = quantities.value[item.id] ?? 0
+  if (quantity > 1) {
+    quantities.value[item.id] = quantity - 1
+  } else if (quantity === 1) {
+    delete quantities.value[item.id]
+    await nextTick()
+    addMoreButton.value?.focus()
+  }
 }
 function cancelOrder() {
   quantities.value = {}
@@ -191,16 +204,69 @@ onMounted(updateActiveCategory)
     </footer>
 
     <dialog ref="reviewDialog" class="order-dialog" aria-labelledby="review-title">
-      <h2 id="review-title">Your {{ orderType.toLowerCase() }} order</h2>
-      <p class="review-note">Sample menu preview</p>
-      <ul>
-        <li v-for="item in orderItems" :key="item.id">
-          <span>{{ quantities[item.id] }} × {{ item.name }}</span
-          ><strong>{{ money(item.price * (quantities[item.id] ?? 0)) }}</strong>
-        </li>
-      </ul>
-      <p class="review-total">Total: {{ money(total) }}</p>
-      <button type="button" class="view-order" @click="reviewDialog?.close()">Back to menu</button>
+      <header class="review-header">
+        <h2 id="review-title">Your {{ orderType.toLowerCase() }} order</h2>
+      </header>
+      <div class="review-content">
+        <ul v-if="orderItems.length" class="review-items" aria-label="Items in your order">
+          <li v-for="item in orderItems" :key="item.id" class="review-item">
+            <div class="quantity-controls" role="group" :aria-label="`${item.name} quantity`">
+              <button
+                type="button"
+                class="quantity-button"
+                :aria-label="`Decrease ${item.name} quantity`"
+                @click="decreaseItem(item)"
+              >
+                −
+              </button>
+              <output :aria-label="`Quantity of ${item.name}`">{{ quantities[item.id] }}</output>
+              <button
+                type="button"
+                class="quantity-button"
+                :aria-label="`Increase ${item.name} quantity`"
+                :disabled="!item.available"
+                @click="addItem(item)"
+              >
+                +
+              </button>
+            </div>
+            <span class="review-item-name">{{ item.name }}</span>
+            <span class="review-item-price">{{
+              money(item.price * (quantities[item.id] ?? 0))
+            }}</span>
+          </li>
+        </ul>
+        <p v-else class="review-empty" role="status">
+          Your order is empty. Tap Add more to choose your items.
+        </p>
+      </div>
+      <footer class="review-footer">
+        <dl class="review-totals" aria-live="polite" aria-atomic="true">
+          <div>
+            <dt>Subtotal:</dt>
+            <dd>{{ money(subtotal) }}</dd>
+          </div>
+          <div>
+            <dt>Discount:</dt>
+            <dd>{{ money(discount) }}</dd>
+          </div>
+          <div class="review-total">
+            <dt>Total</dt>
+            <dd>{{ money(total) }}</dd>
+          </div>
+        </dl>
+        <div class="review-actions">
+          <button
+            ref="addMoreButton"
+            type="button"
+            class="add-more-button"
+            autofocus
+            @click="reviewDialog?.close()"
+          >
+            Add more
+          </button>
+        </div>
+      </footer>
     </dialog>
   </main>
 </template>
@@ -509,43 +575,146 @@ button:disabled {
 }
 .order-dialog {
   position: fixed;
-  inset: 0;
-  margin: auto;
-  width: min(90vw, 600px);
-  max-height: 80dvh;
-  padding: 32px;
+  inset: auto 0 0;
+  margin: 0 auto;
+  width: min(100%, 1024px);
+  max-width: 100%;
+  height: 79dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+  padding: 0;
   border: 0;
-  border-radius: 24px;
+  border-radius: clamp(32px, 12vw, 150px) clamp(32px, 12vw, 150px) 0 0;
   background: #fff;
   color: #111;
 }
+.order-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
 .order-dialog::backdrop {
-  background: rgb(0 0 0 / 55%);
+  background: rgb(0 0 0 / 38%);
+}
+.review-header {
+  flex-shrink: 0;
+  padding: clamp(16px, 2.5dvh, 40px) 24px;
+  border-bottom: 2px solid #92928c;
+  text-align: center;
 }
 .order-dialog h2 {
+  font-size: clamp(24px, min(5vw, 5dvh), 60px);
   font-weight: 700;
   line-height: 1.2;
+  letter-spacing: 0.04em;
 }
-.review-note {
-  color: #62634e;
-  margin-top: 8px;
+.review-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: clamp(12px, 2dvh, 40px) clamp(16px, 5vw, 52px);
 }
-.order-dialog ul {
+.review-items {
   list-style: none;
   padding: 0;
-  margin-block: 24px;
+  margin: 0;
 }
-.order-dialog li {
+.review-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: clamp(12px, 4vw, 48px);
+  padding-block: clamp(12px, 2dvh, 24px);
+  font-size: clamp(17px, min(3.2vw, 3.5dvh), 34px);
+}
+.quantity-controls {
+  display: flex;
+  align-items: center;
+  gap: clamp(6px, 1.8vw, 24px);
+}
+.quantity-controls output {
+  min-width: 2ch;
+  text-align: center;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.quantity-button {
+  display: grid;
+  place-items: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--cream);
+  color: #111;
+  font-size: 30px;
+  line-height: 1;
+}
+.review-item-name {
+  overflow-wrap: anywhere;
+}
+.review-item-price {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.review-empty {
+  padding-block: 16px;
+  text-align: center;
+  color: #62634e;
+  font-size: clamp(17px, 2.5vw, 28px);
+}
+.review-footer {
+  flex-shrink: 0;
+  padding: 0 clamp(16px, 5vw, 52px) max(24px, env(safe-area-inset-bottom));
+}
+.review-totals {
+  margin: 0;
+  padding: clamp(12px, 2dvh, 40px) clamp(16px, 4vw, 48px);
+  border: 2px dashed #74746e;
+  font-size: clamp(18px, min(3vw, 3dvh), 32px);
+  font-variant-numeric: tabular-nums;
+}
+.review-totals > div {
   display: flex;
   justify-content: space-between;
-  gap: 24px;
-  padding-block: 12px;
-  border-bottom: 1px solid #e8e8e4;
+  gap: 16px;
+}
+.review-totals dd {
+  margin: 0;
+  white-space: nowrap;
 }
 .review-total {
-  margin-bottom: 24px;
-  font-size: 24px;
   font-weight: 700;
+}
+.review-actions {
+  display: flex;
+  padding-top: clamp(16px, 3dvh, 60px);
+}
+.add-more-button {
+  min-height: 52px;
+  padding: 12px 24px;
+  border: 0;
+  border-radius: 24px;
+  background: #c97920;
+  box-shadow: 0 6px 0 #925713;
+  color: #fff;
+  font-size: clamp(18px, 3vw, 32px);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+@media (max-width: 600px) {
+  .review-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px 16px;
+  }
+  .review-item-name {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+  .review-actions {
+    padding-top: 20px;
+  }
 }
 @media (max-width: 600px) {
   .menu-screen {
