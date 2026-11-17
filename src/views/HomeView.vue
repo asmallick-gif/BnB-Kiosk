@@ -1,8 +1,14 @@
 ﻿<script setup lang="ts">
 import { useRouter } from 'vue-router'
+import { onMounted } from 'vue'
+import { activeOrderKey } from '@/services/orders'
 import background from '@/assets/images/welcome-background.jpg'
 import logo from '@/assets/logos/bnb-logo.svg'
 const router = useRouter()
+onMounted(() => {
+  const token = window.sessionStorage.getItem(activeOrderKey)
+  if (token) router.replace({ name: 'order-status', params: { token }, query: { kiosk: '1' } })
+})
 </script>
 
 <template>

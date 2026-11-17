@@ -1,3 +1,4 @@
+
 # BnB-Kiosk
 
 This template should help get you started developing with Vue 3 in Vite.
@@ -71,3 +72,9 @@ npm run test:e2e -- --debug
 ```sh
 npm run lint
 ```
+
+### Kiosk order confirmation
+
+See [the integration contract](docs/kiosk-order-integration.md) for the pending
+screen, staff confirmation statuses, QR tracking, local preview limitations,
+and the two Supabase RPCs needed by the separately developed staff backend.

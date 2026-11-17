@@ -3,6 +3,8 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import logo from '@/assets/logos/bnb-logo.svg'
 import { menuCategories, menuPromotion, type MenuItem } from '@/data/menu'
+import CheckoutView from './CheckoutView.vue'
+import { activeOrderKey } from '@/services/orders'
 
 const route = useRoute()
 const router = useRouter()
@@ -11,11 +13,23 @@ const categoryNav = ref<HTMLElement | null>(null)
 const activeCategory = ref(menuCategories[0]?.id ?? '')
 const quantities = ref<Record<string, number>>({})
 const reviewDialog = ref<HTMLDialogElement | null>(null)
+const viewOrderButton = ref<HTMLButtonElement | null>(null)
 const addMoreButton = ref<HTMLButtonElement | null>(null)
+const isClosingReview = ref(false)
+const checkoutStep = ref(false)
+const paymentMethod = ref<'cash' | 'e-wallet'>('cash')
 const failedImages = ref(new Set<string>())
 const orderType = computed(() => (route.query.type === 'take-out' ? 'Take-out' : 'Dine-in'))
 const items = menuCategories.flatMap((category) => category.items)
 const orderItems = computed(() => items.filter((item) => (quantities.value[item.id] ?? 0) > 0))
+const checkoutItems = computed(() =>
+  orderItems.value.map((item) => ({
+    id: item.id,
+    name: item.name,
+    quantity: quantities.value[item.id] ?? 0,
+    lineTotal: item.price * (quantities.value[item.id] ?? 0),
+  })),
+)
 const itemCount = computed(() => Object.values(quantities.value).reduce((sum, n) => sum + n, 0))
 const subtotal = computed(() =>
   items.reduce((sum, item) => sum + item.price * (quantities.value[item.id] ?? 0), 0),
@@ -78,11 +92,61 @@ function cancelOrder() {
   quantities.value = {}
   router.push('/')
 }
-onMounted(updateActiveCategory)
+function openReview() {
+  if (!itemCount.value || reviewDialog.value?.open) return
+  isClosingReview.value = false
+  checkoutStep.value = false
+  reviewDialog.value?.showModal()
+}
+function proceedToCheckout() {
+  if (!itemCount.value || isClosingReview.value) return
+  reviewDialog.value?.close()
+  checkoutStep.value = true
+}
+async function editOrder() {
+  checkoutStep.value = false
+  await nextTick()
+  reviewDialog.value?.showModal()
+  addMoreButton.value?.focus()
+}
+function closeReview() {
+  if (isClosingReview.value) return
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    reviewDialog.value?.close()
+  } else {
+    isClosingReview.value = true
+  }
+}
+function finishReviewClose() {
+  if (!isClosingReview.value) return
+  reviewDialog.value?.close()
+  isClosingReview.value = false
+}
+function restoreMenuFocus() {
+  if (checkoutStep.value) return
+  if (itemCount.value) viewOrderButton.value?.focus()
+  else menuScroller.value?.focus()
+}
+onMounted(() => {
+  const token = window.sessionStorage.getItem(activeOrderKey)
+  if (token) router.replace({ name: 'order-status', params: { token }, query: { kiosk: '1' } })
+  else updateActiveCategory()
+})
 </script>
 
 <template>
-  <main class="menu-screen">
+  <CheckoutView
+    v-if="checkoutStep"
+    v-model:payment-method="paymentMethod"
+    :order-type="orderType"
+    :items="checkoutItems"
+    :item-count="itemCount"
+    :subtotal="subtotal"
+    :discount="discount"
+    :total="total"
+    @back="editOrder"
+  />
+  <main v-show="!checkoutStep" class="menu-screen">
     <header class="menu-header">
       <div class="menu-brand">
         <span
@@ -193,17 +257,26 @@ onMounted(updateActiveCategory)
           <p class="total" aria-live="polite">Total: {{ money(total) }}</p>
         </div>
         <button
+          ref="viewOrderButton"
           type="button"
           class="view-order"
           :disabled="!itemCount"
-          @click="reviewDialog?.showModal()"
+          aria-haspopup="dialog"
+          @click="openReview"
         >
           View my order<span v-if="itemCount" class="order-count">{{ itemCount }}</span>
         </button>
       </div>
     </footer>
 
-    <dialog ref="reviewDialog" class="order-dialog" aria-labelledby="review-title">
+    <dialog
+      ref="reviewDialog"
+      :class="['order-dialog', { 'is-closing': isClosingReview }]"
+      aria-labelledby="review-title"
+      @cancel.prevent="closeReview"
+      @close="restoreMenuFocus"
+      @animationend.self="finishReviewClose"
+    >
       <header class="review-header">
         <h2 id="review-title">Your {{ orderType.toLowerCase() }} order</h2>
       </header>
@@ -261,9 +334,17 @@ onMounted(updateActiveCategory)
             type="button"
             class="add-more-button"
             autofocus
-            @click="reviewDialog?.close()"
+            @click="closeReview"
           >
             Add more
+          </button>
+          <button
+            type="button"
+            class="checkout-button"
+            :disabled="!itemCount || isClosingReview"
+            @click="proceedToCheckout"
+          >
+            Proceed to Checkout
           </button>
         </div>
       </footer>
@@ -286,6 +367,15 @@ button {
   font: inherit;
   cursor: pointer;
   touch-action: manipulation;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    box-shadow 120ms ease,
+    transform 120ms ease;
+}
+button:not(:disabled):active {
+  transform: scale(0.98);
 }
 button:focus-visible,
 .menu-content:focus-visible {
@@ -600,13 +690,43 @@ button:disabled {
 .order-dialog[open] {
   display: flex;
   flex-direction: column;
+  animation: order-sheet-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.order-dialog[open].is-closing {
+  animation: order-sheet-out 200ms cubic-bezier(0.4, 0, 1, 1) both;
+  pointer-events: none;
 }
 .order-dialog::backdrop {
   background: rgb(0 0 0 / 38%);
+  animation: order-backdrop-in 240ms ease both;
+}
+.order-dialog.is-closing::backdrop {
+  animation: order-backdrop-in 200ms ease reverse both;
+}
+@keyframes order-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes order-sheet-out {
+  to {
+    transform: translateY(100%);
+  }
+}
+@keyframes order-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 .review-header {
   flex-shrink: 0;
-  padding: clamp(16px, 2.5dvh, 40px) 24px;
+  padding: clamp(16px, 2.5dvh, 40px) clamp(32px, 10vw, 104px);
   border-bottom: 2px solid #92928c;
   text-align: center;
 }
@@ -621,6 +741,7 @@ button:disabled {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   padding: clamp(12px, 2dvh, 40px) clamp(16px, 5vw, 52px);
 }
 .review-items {
@@ -698,19 +819,44 @@ button:disabled {
 }
 .review-actions {
   display: flex;
+  justify-content: space-between;
+  gap: 16px;
   padding-top: clamp(16px, 3dvh, 60px);
 }
-.add-more-button {
+.add-more-button,
+.checkout-button {
   min-height: 52px;
   padding: 12px 24px;
   border: 0;
   border-radius: 24px;
-  background: #c97920;
+  background: #b96a1b;
   box-shadow: 0 6px 0 #925713;
   color: #fff;
   font-size: clamp(18px, 3vw, 32px);
   font-weight: 700;
   letter-spacing: 0.04em;
+}
+.add-more-button:not(:disabled):active,
+.checkout-button:not(:disabled):active {
+  transform: translateY(4px);
+  box-shadow: 0 2px 0 #925713;
+}
+.checkout-button {
+  background: var(--olive);
+  box-shadow: 0 6px 0 #465800;
+}
+.checkout-button:not(:disabled):active {
+  box-shadow: 0 2px 0 #465800;
+}
+@media (hover: hover) {
+  .add-more-button:hover {
+    background: #a45a12;
+  }
+  .checkout-button:not(:disabled):hover,
+  .quantity-button:not(:disabled):hover {
+    background: #4e6200;
+    color: #fff;
+  }
 }
 @media (max-width: 600px) {
   .review-item {
@@ -723,6 +869,41 @@ button:disabled {
   }
   .review-actions {
     padding-top: 20px;
+    flex-wrap: wrap;
+  }
+  .review-actions button {
+    flex: 1 1 auto;
+    padding-inline: 16px;
+    font-size: 18px;
+  }
+}
+@media (max-height: 500px) {
+  .order-dialog {
+    height: 96dvh;
+  }
+  .review-header {
+    padding-block: 12px;
+  }
+  .review-footer {
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+  .review-totals {
+    padding-block: 8px;
+  }
+  .review-actions {
+    padding-top: 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  button {
+    transition: none;
+  }
+  .menu-screen button:not(:disabled):active {
+    transform: none;
+  }
+  .order-dialog[open],
+  .order-dialog::backdrop {
+    animation: none;
   }
 }
 @media (max-width: 600px) {

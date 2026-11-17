@@ -5,6 +5,11 @@ const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     {
+      path: '/order/:token',
+      name: 'order-status',
+      component: () => import('../views/OrderStatusView.vue'),
+    },
+    {
       path: '/menu',
       name: 'menu',
       component: () => import('../views/MenuView.vue'),
