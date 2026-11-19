@@ -7,9 +7,21 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
 
-const app = createApp(App)
+async function bootstrap() {
+  // Mount /staff/* routes in Vite development mode only so kiosk and staff can share
+  // same-origin localStorage preview before Supabase is configured.
+  // Production kiosk builds tree-shake this branch completely; deploy staff via `npm run build:staff`.
+  if (import.meta.env.DEV) {
+    const { mountDevStaffRoutes } = await import('./router/devStaff')
+    mountDevStaffRoutes(router)
+  }
 
-app.use(createPinia())
-app.use(router)
+  const app = createApp(App)
 
-app.mount('#app')
+  app.use(createPinia())
+  app.use(router)
+
+  app.mount('#app')
+}
+
+void bootstrap()

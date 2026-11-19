@@ -1,0 +1,83 @@
+import { computed, ref } from 'vue'
+import { defineStore } from 'pinia'
+import {
+  getCurrentStaffUser,
+  isLocalStaffAuthDemo,
+  loginStaff,
+  logoutStaff,
+  registerStaff,
+  requestPasswordReset,
+  subscribeStaffAuthChanges,
+  type StaffLoginInput,
+  type StaffRegistrationInput,
+  type StaffRegistrationResult,
+  type StaffUser,
+} from '@/services/staffAuth'
+
+export const useStaffAuthStore = defineStore('staffAuth', () => {
+  const user = ref<StaffUser | null>(null)
+  const initialized = ref(false)
+  const isLocalDemo = isLocalStaffAuthDemo
+
+  let initPromise: Promise<void> | null = null
+  let unsubscribeAuth: (() => void) | null = null
+
+  const isAuthenticated = computed(() => user.value !== null)
+
+  async function init(): Promise<void> {
+    if (initialized.value) return
+    if (initPromise) return initPromise
+
+    initPromise = (async () => {
+      try {
+        user.value = await getCurrentStaffUser()
+      } finally {
+        initialized.value = true
+        if (!unsubscribeAuth) {
+          unsubscribeAuth = subscribeStaffAuthChanges((nextUser) => {
+            user.value = nextUser
+          })
+        }
+      }
+    })()
+
+    return initPromise
+  }
+
+  async function login(input: StaffLoginInput): Promise<StaffUser> {
+    const signedIn = await loginStaff(input)
+    user.value = signedIn
+    initialized.value = true
+    return signedIn
+  }
+
+  async function register(input: StaffRegistrationInput): Promise<StaffRegistrationResult> {
+    const result = await registerStaff(input)
+    if (!result.requiresEmailConfirmation) {
+      user.value = result.user
+      initialized.value = true
+    }
+    return result
+  }
+
+  async function resetPassword(email: string): Promise<void> {
+    await requestPasswordReset(email)
+  }
+
+  async function logout(): Promise<void> {
+    await logoutStaff()
+    user.value = null
+  }
+
+  return {
+    user,
+    initialized,
+    isAuthenticated,
+    isLocalDemo,
+    init,
+    login,
+    register,
+    resetPassword,
+    logout,
+  }
+})
