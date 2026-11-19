@@ -1,18 +1,23 @@
 -- Bake'n Brew Kiosk + Staff Backend Schema for Supabase (PostgreSQL)
 -- Run this in the Supabase SQL Editor (or as a Supabase CLI migration).
--- Aligns with docs/kiosk-order-integration.md and src/services/{orders,staffAuth,staffOrders}.ts.
+-- Security hardening:
+--   * Parameterized SQL in every RPC/trigger (zero dynamic EXECUTE string concatenation)
+--   * Locked search_path on all SECURITY DEFINER functions
+--   * Explicit REVOKE ALL before minimal role-scoped GRANTs
+--   * SHA-256 hashed staff invitation codes (raw codes are never persisted)
+--   * Row Level Security (RLS) + server-side CHECK constraints on every table
 
-create extension if not exists pgcrypto;
+create extension if not exists pgcrypto with schema extensions;
 
 -- ---------------------------------------------------------------------------
--- 1. Staff invitations & profiles
+-- 1. Staff invitations (hashed) & staff profiles
 -- ---------------------------------------------------------------------------
 
 create table if not exists public.staff_invitations (
-  code text primary key,
+  code_hash text primary key check (code_hash ~ '^[0-9a-f]{64}$'),
   role text not null default 'staff' check (role in ('staff', 'manager', 'admin')),
-  max_uses integer not null default 1 check (max_uses > 0),
-  uses_count integer not null default 0 check (uses_count >= 0),
+  max_uses integer not null default 1 check (max_uses between 1 and 100),
+  uses_count integer not null default 0 check (uses_count >= 0 and uses_count <= max_uses),
   active boolean not null default true,
   expires_at timestamptz,
   created_at timestamptz not null default now()
@@ -20,20 +25,32 @@ create table if not exists public.staff_invitations (
 
 create table if not exists public.staff_profiles (
   id uuid primary key references auth.users (id) on delete cascade,
-  email text not null unique,
-  full_name text not null,
+  email text not null unique check (
+    char_length(email) <= 254
+    and email ~* '^[a-z0-9.!#$%&''*+/=?^_`{|}~-]+@[a-z0-9-]+(\.[a-z0-9-]+)+$'
+  ),
+  full_name text not null check (char_length(trim(full_name)) between 2 and 80),
   role text not null default 'staff' check (role in ('staff', 'manager', 'admin')),
   active boolean not null default true,
   created_at timestamptz not null default now()
 );
 
--- Helper used by RLS policies and staff RPCs.
+create or replace function public.hash_invitation_code(p_code text)
+returns text
+language sql
+immutable
+strict
+set search_path = public, extensions
+as $$
+  select encode(extensions.digest(upper(trim(p_code)), 'sha256'), 'hex');
+$$;
+
 create or replace function public.is_active_staff()
 returns boolean
 language sql
 stable
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
   select exists (
     select 1
@@ -43,29 +60,122 @@ as $$
   );
 $$;
 
+create or replace function public.is_active_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, extensions
+as $$
+  select exists (
+    select 1
+    from public.staff_profiles
+    where id = auth.uid()
+      and active = true
+      and role in ('admin', 'manager')
+  );
+$$;
+
+-- Create an invitation from a specific code (callable from SQL Editor / service role or active admin).
+create or replace function public.create_staff_invitation(
+  p_code text,
+  p_role text default 'staff',
+  p_max_uses integer default 1,
+  p_expires_hours integer default 168
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_clean text;
+begin
+  if auth.uid() is not null and not public.is_active_admin() then
+    raise exception 'Unauthorized: manager or admin role required.';
+  end if;
+
+  v_clean := upper(trim(coalesce(p_code, '')));
+  if v_clean !~ '^[A-Z0-9-]{6,32}$' then
+    raise exception 'Invitation code must be 6-32 characters of A-Z, 0-9, and hyphens.';
+  end if;
+
+  if p_role not in ('staff', 'manager', 'admin') then
+    raise exception 'Invalid staff role.';
+  end if;
+
+  insert into public.staff_invitations (code_hash, role, max_uses, expires_at)
+  values (
+    public.hash_invitation_code(v_clean),
+    p_role,
+    greatest(1, least(coalesce(p_max_uses, 1), 100)),
+    case when p_expires_hours is null then null else now() + make_interval(hours => p_expires_hours) end
+  )
+  on conflict (code_hash) do update
+  set role = excluded.role,
+      max_uses = excluded.max_uses,
+      active = true,
+      expires_at = excluded.expires_at;
+end;
+$$;
+
+-- Generate a cryptographically random invitation code on demand and return it once.
+create or replace function public.generate_staff_invitation(
+  p_role text default 'staff',
+  p_max_uses integer default 1,
+  p_expires_hours integer default 168
+)
+returns text
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_raw text;
+  v_code text;
+begin
+  if auth.uid() is not null and not public.is_active_admin() then
+    raise exception 'Unauthorized: manager or admin role required.';
+  end if;
+
+  v_raw := upper(encode(extensions.gen_random_bytes(6), 'hex'));
+  v_code := 'BNB-' || substr(v_raw, 1, 4) || '-' || substr(v_raw, 5, 4) || '-' || substr(v_raw, 9, 4);
+
+  perform public.create_staff_invitation(v_code, p_role, p_max_uses, p_expires_hours);
+  return v_code;
+end;
+$$;
+
 -- Validate invitation_code on signup and automatically create a staff_profiles row.
 create or replace function public.handle_new_staff_user()
 returns trigger
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_code text;
+  v_code_hash text;
   v_full_name text;
   v_invite public.staff_invitations%rowtype;
 begin
-  v_code := nullif(trim(coalesce(new.raw_user_meta_data ->> 'invitation_code', '')), '');
-  v_full_name := nullif(trim(coalesce(new.raw_user_meta_data ->> 'full_name', '')), '');
+  v_code := upper(trim(coalesce(new.raw_user_meta_data ->> 'invitation_code', '')));
+  v_full_name := trim(regexp_replace(coalesce(new.raw_user_meta_data ->> 'full_name', ''), '\s+', ' ', 'g'));
 
-  if v_code is null then
-    raise exception 'A valid staff invitation code is required to register.';
+  if v_code !~ '^[A-Z0-9-]{6,32}$' then
+    raise exception 'Invalid or expired staff invitation code.';
   end if;
+
+  if char_length(v_full_name) < 2 or char_length(v_full_name) > 80 then
+    raise exception 'Please provide a valid full name.';
+  end if;
+
+  v_code_hash := public.hash_invitation_code(v_code);
 
   select *
   into v_invite
   from public.staff_invitations
-  where code = v_code
+  where code_hash = v_code_hash
     and active = true
     and (expires_at is null or expires_at > now())
     and uses_count < max_uses
@@ -77,13 +187,13 @@ begin
 
   update public.staff_invitations
   set uses_count = uses_count + 1
-  where code = v_invite.code;
+  where code_hash = v_invite.code_hash;
 
   insert into public.staff_profiles (id, email, full_name, role, active)
   values (
     new.id,
-    lower(new.email),
-    coalesce(v_full_name, split_part(new.email, '@', 1)),
+    lower(trim(new.email)),
+    v_full_name,
     v_invite.role,
     true
   );
@@ -103,9 +213,9 @@ create trigger on_auth_user_created_staff
 -- ---------------------------------------------------------------------------
 
 create table if not exists public.products (
-  id text primary key,
-  category_id text not null,
-  name text not null,
+  id text primary key check (id ~ '^[a-z0-9-]{1,64}$'),
+  category_id text not null check (category_id ~ '^[a-z0-9-]{1,64}$'),
+  name text not null check (char_length(trim(name)) between 1 and 120),
   price numeric(10, 2) not null check (price >= 0),
   available boolean not null default true,
   updated_at timestamptz not null default now()
@@ -141,11 +251,34 @@ create table if not exists public.order_items (
 );
 
 -- Enable Realtime on orders so the staff portal receives live updates.
-alter publication supabase_realtime add table public.orders;
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'orders'
+  ) then
+    alter publication supabase_realtime add table public.orders;
+  end if;
+end $$;
 
 -- ---------------------------------------------------------------------------
--- 3. Row Level Security (RLS)
+-- 3. Row Level Security (RLS) & least-privilege table grants
 -- ---------------------------------------------------------------------------
+
+revoke all on table public.staff_invitations from public, anon, authenticated;
+revoke all on table public.staff_profiles from public, anon, authenticated;
+revoke all on table public.products from public, anon, authenticated;
+revoke all on table public.orders from public, anon, authenticated;
+revoke all on table public.order_items from public, anon, authenticated;
+
+grant select on table public.staff_profiles to authenticated;
+grant select on table public.products to anon, authenticated;
+grant update (available, updated_at) on table public.products to authenticated;
+grant select on table public.orders to authenticated;
+grant select on table public.order_items to authenticated;
 
 alter table public.staff_invitations enable row level security;
 alter table public.staff_profiles enable row level security;
@@ -153,7 +286,6 @@ alter table public.products enable row level security;
 alter table public.orders enable row level security;
 alter table public.order_items enable row level security;
 
--- Staff profiles: authenticated staff can read their own profile.
 drop policy if exists "staff read own profile" on public.staff_profiles;
 create policy "staff read own profile"
   on public.staff_profiles
@@ -161,7 +293,6 @@ create policy "staff read own profile"
   to authenticated
   using (id = auth.uid());
 
--- Products: public kiosk can read menu availability; active staff can update availability.
 drop policy if exists "public read products" on public.products;
 create policy "public read products"
   on public.products
@@ -177,7 +308,6 @@ create policy "staff manage products"
   using (public.is_active_staff())
   with check (public.is_active_staff());
 
--- Orders & order_items: NO direct anon select/update; active staff only.
 drop policy if exists "staff read orders" on public.orders;
 create policy "staff read orders"
   on public.orders
@@ -201,7 +331,7 @@ returns jsonb
 language sql
 stable
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
   select jsonb_build_object(
     'token', o.token,
@@ -236,14 +366,14 @@ as $$
 $$;
 
 -- ---------------------------------------------------------------------------
--- 5. Public kiosk RPCs (from docs/kiosk-order-integration.md)
+-- 5. Public kiosk RPCs (parameterized; zero dynamic SQL)
 -- ---------------------------------------------------------------------------
 
 create or replace function public.create_kiosk_order(p_request jsonb)
 returns jsonb
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_request_id uuid;
@@ -265,11 +395,11 @@ begin
      or v_payment_method not in ('cash', 'e-wallet')
      or jsonb_typeof(p_request -> 'items') <> 'array'
      or jsonb_array_length(p_request -> 'items') = 0
+     or jsonb_array_length(p_request -> 'items') > 50
   then
     raise exception 'Invalid order request.';
   end if;
 
-  -- Idempotent retry lookup
   select id into v_existing_id from public.orders where request_id = v_request_id;
   if found then
     return public.serialize_kiosk_order(v_existing_id);
@@ -292,7 +422,7 @@ begin
       and available = true;
 
     if not found then
-      raise exception 'Item unavailable: %', coalesce(v_item ->> 'id', 'unknown');
+      raise exception 'Item unavailable.';
     end if;
 
     insert into public.order_items (order_id, product_id, name, unit_price, quantity, line_total)
@@ -315,7 +445,7 @@ returns jsonb
 language sql
 stable
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
   select public.serialize_kiosk_order(o.id)
   from public.orders o
@@ -331,7 +461,7 @@ returns jsonb
 language plpgsql
 stable
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 begin
   if not public.is_active_staff() then
@@ -352,7 +482,7 @@ create or replace function public.staff_update_order_status(p_token uuid, p_stat
 returns jsonb
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_order public.orders%rowtype;
@@ -378,7 +508,7 @@ begin
     or (v_order.status = 'ready' and p_status = 'completed');
 
   if not v_valid then
-    raise exception 'Invalid status transition from % to %.', v_order.status, p_status;
+    raise exception 'Invalid status transition.';
   end if;
 
   update public.orders
@@ -391,10 +521,25 @@ begin
 end;
 $$;
 
+-- Revoke default PUBLIC execution on all custom functions before explicit minimal grants.
+revoke all on function public.hash_invitation_code(text) from public, anon, authenticated;
+revoke all on function public.is_active_staff() from public, anon, authenticated;
+revoke all on function public.is_active_admin() from public, anon, authenticated;
+revoke all on function public.create_staff_invitation(text, text, integer, integer) from public, anon, authenticated;
+revoke all on function public.generate_staff_invitation(text, integer, integer) from public, anon, authenticated;
+revoke all on function public.handle_new_staff_user() from public, anon, authenticated;
+revoke all on function public.serialize_kiosk_order(uuid) from public, anon, authenticated;
+revoke all on function public.create_kiosk_order(jsonb) from public, anon, authenticated;
+revoke all on function public.get_kiosk_order(uuid) from public, anon, authenticated;
+revoke all on function public.staff_list_orders() from public, anon, authenticated;
+revoke all on function public.staff_update_order_status(uuid, text) from public, anon, authenticated;
+
 grant execute on function public.create_kiosk_order(jsonb) to anon, authenticated;
 grant execute on function public.get_kiosk_order(uuid) to anon, authenticated;
 grant execute on function public.staff_list_orders() to authenticated;
 grant execute on function public.staff_update_order_status(uuid, text) to authenticated;
+grant execute on function public.create_staff_invitation(text, text, integer, integer) to authenticated;
+grant execute on function public.generate_staff_invitation(text, integer, integer) to authenticated;
 
--- Example seed invitation code (replace before production):
--- insert into public.staff_invitations (code, role, max_uses) values ('BNB-STAFF-2026', 'staff', 10);
+-- Seed initial admin invitation code (matches local dev code; rotate/expire after onboarding):
+select public.create_staff_invitation('BNB-5JSN-SYN3', 'admin', 5, 168);

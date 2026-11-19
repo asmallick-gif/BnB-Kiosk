@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import StaffAuthField from '@/components/staff/StaffAuthField.vue'
 import StaffAuthLayout from '@/components/staff/StaffAuthLayout.vue'
+import { sanitizeInternalRedirect } from '@/lib/security'
 import { useStaffAuthStore } from '@/stores/staffAuth'
 
 const route = useRoute()
@@ -17,11 +18,7 @@ const errorMessage = ref('')
 const statusMessage = ref('')
 
 function resolvePostLoginTarget() {
-  const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : ''
-  if (redirect.startsWith('/') && !redirect.startsWith('//')) {
-    return redirect
-  }
-  return { name: 'staff-queue' }
+  return sanitizeInternalRedirect(route.query.redirect) ?? { name: 'staff-queue' }
 }
 
 async function handleSubmit() {

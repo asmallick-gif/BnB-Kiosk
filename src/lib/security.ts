@@ -1,0 +1,127 @@
+// Shared input validation, sanitization, and client-side auth security helpers.
+// Note: Server-side SQL injection protection is enforced by parameterized Supabase RPCs,
+// PostgreSQL CHECK constraints, and Row Level Security in docs/supabase-staff-schema.sql.
+
+const CONTROL_CHARS = /[\u0000-\u001F\u007F]/g
+const EMAIL_PATTERN = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+$/i
+const FULL_NAME_PATTERN = /^[\p{L}\p{M}][\p{L}\p{M}\s'.-]{1,79}$/u
+const INVITE_CODE_PATTERN = /^[A-Z0-9-]{6,32}$/
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export const MAX_EMAIL_LENGTH = 254
+export const MIN_PASSWORD_LENGTH = 8
+export const MAX_PASSWORD_LENGTH = 128
+
+export function stripControlChars(value: string): string {
+  return value.replace(CONTROL_CHARS, '')
+}
+
+export function validateEmail(raw: string): string {
+  const email = stripControlChars(raw).trim().toLowerCase()
+  if (!email || email.length > MAX_EMAIL_LENGTH || !EMAIL_PATTERN.test(email)) {
+    throw new Error('Please enter a valid work email address.')
+  }
+  return email
+}
+
+export function validateFullName(raw: string): string {
+  const cleaned = stripControlChars(raw).trim().replace(/\s+/g, ' ')
+  if (cleaned.length < 2 || cleaned.length > 80 || !FULL_NAME_PATTERN.test(cleaned)) {
+    throw new Error('Please enter a valid full name (letters, spaces, hyphens, or apostrophes).')
+  }
+  return cleaned
+}
+
+export function validateInvitationCode(raw: string): string {
+  const code = stripControlChars(raw).trim().toUpperCase()
+  if (!INVITE_CODE_PATTERN.test(code)) {
+    throw new Error('Invitation code must contain only letters, numbers, and hyphens.')
+  }
+  return code
+}
+
+export function validateNewPassword(password: string): string {
+  if (password.length < MIN_PASSWORD_LENGTH || password.length > MAX_PASSWORD_LENGTH) {
+    throw new Error(
+      `Password must be between ${MIN_PASSWORD_LENGTH} and ${MAX_PASSWORD_LENGTH} characters.`,
+    )
+  }
+  if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+    throw new Error('Password must include at least one letter and one number.')
+  }
+  return password
+}
+
+export function validateLoginPassword(password: string): string {
+  if (!password || password.length > MAX_PASSWORD_LENGTH) {
+    throw new Error('Please enter your password.')
+  }
+  return password
+}
+
+export function isValidUuid(value: string): boolean {
+  return UUID_PATTERN.test(value)
+}
+
+export function sanitizeInternalRedirect(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  const cleaned = stripControlChars(raw).trim()
+  // Block protocol-relative URLs (//evil.com), backslashes (/\evil.com), or non-relative paths.
+  if (!cleaned.startsWith('/') || cleaned.startsWith('//') || cleaned.includes('\\')) {
+    return null
+  }
+  return cleaned
+}
+
+export function timingSafeEqualString(a: string, b: string): boolean {
+  const maxLen = Math.max(a.length, b.length)
+  let diff = a.length ^ b.length
+  for (let i = 0; i < maxLen; i += 1) {
+    diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0)
+  }
+  return diff === 0
+}
+
+export async function hashSecretWithSalt(secret: string, salt: string): Promise<string> {
+  const data = new TextEncoder().encode(`${salt}:${secret}`)
+  const digest = await crypto.subtle.digest('SHA-256', data)
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+export interface AttemptThrottle {
+  checkAllowed: (key: string) => void
+  recordFailure: (key: string) => void
+  reset: (key: string) => void
+}
+
+export function createAttemptThrottle(maxAttempts = 5, lockoutMs = 60_000): AttemptThrottle {
+  const attempts = new Map<string, { count: number; lockedUntil: number }>()
+
+  return {
+    checkAllowed(key: string) {
+      const entry = attempts.get(key)
+      if (!entry) return
+      const remaining = entry.lockedUntil - Date.now()
+      if (remaining > 0) {
+        const seconds = Math.ceil(remaining / 1000)
+        throw new Error(`Too many failed attempts. Please wait ${seconds}s and try again.`)
+      }
+      if (entry.lockedUntil > 0 && remaining <= 0) {
+        attempts.delete(key)
+      }
+    },
+    recordFailure(key: string) {
+      const current = attempts.get(key) ?? { count: 0, lockedUntil: 0 }
+      const nextCount = current.count + 1
+      attempts.set(key, {
+        count: nextCount,
+        lockedUntil: nextCount >= maxAttempts ? Date.now() + lockoutMs : 0,
+      })
+    },
+    reset(key: string) {
+      attempts.delete(key)
+    },
+  }
+}

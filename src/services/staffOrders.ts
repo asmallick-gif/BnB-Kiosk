@@ -1,7 +1,16 @@
 import { supabase } from '@/lib/supabase'
+import { isValidUuid } from '@/lib/security'
 import { isLocalOrderDemo, type KioskOrder, type OrderStatus } from '@/services/orders'
 
 const localOrderPrefix = 'bnb.demo-order.'
+const validStatuses = new Set<OrderStatus>([
+  'pending',
+  'confirmed',
+  'cooking',
+  'ready',
+  'completed',
+  'rejected',
+])
 
 const allowedTransitions: Record<OrderStatus, OrderStatus[]> = {
   pending: ['confirmed', 'rejected'],
@@ -65,7 +74,14 @@ export async function updateStaffOrderStatus(
   token: string,
   nextStatus: OrderStatus,
 ): Promise<KioskOrder> {
+  if (!validStatuses.has(nextStatus)) {
+    throw new Error('Invalid order status.')
+  }
+
   if (supabase) {
+    if (!isValidUuid(token)) {
+      throw new Error('Invalid order token.')
+    }
     const { data, error } = await supabase.rpc('staff_update_order_status', {
       p_token: token,
       p_status: nextStatus,

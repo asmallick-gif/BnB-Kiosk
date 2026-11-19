@@ -2,13 +2,15 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { JSDOM } from 'jsdom'
 import {
   getCurrentStaffUser,
+  LOCAL_DEV_INVITATION_CODE,
   loginStaff,
   logoutStaff,
   registerStaff,
   requestPasswordReset,
+  resetLoginThrottleForTests,
 } from '../staffAuth'
 
-describe('staff authentication service (local preview)', () => {
+describe('staff authentication service (local preview + security checks)', () => {
   const storageDescriptor = Object.getOwnPropertyDescriptor(window, 'localStorage')
 
   beforeAll(() => {
@@ -20,13 +22,16 @@ describe('staff authentication service (local preview)', () => {
     if (storageDescriptor) Object.defineProperty(window, 'localStorage', storageDescriptor)
   })
 
-  beforeEach(() => window.localStorage.clear())
+  beforeEach(() => {
+    window.localStorage.clear()
+    resetLoginThrottleForTests()
+  })
 
-  it('registers a staff account, persists session, signs out, and signs back in', async () => {
+  it('registers a staff account with the valid invitation code, hashes password, and signs back in', async () => {
     const created = await registerStaff({
       fullName: 'Maria Santos',
       email: 'Maria.Santos@BakeNBrew.ph',
-      invitationCode: 'BNB-2026',
+      invitationCode: LOCAL_DEV_INVITATION_CODE.toLowerCase(),
       password: 'Password123',
     })
 
@@ -34,6 +39,10 @@ describe('staff authentication service (local preview)', () => {
     expect(created.user.email).toBe('maria.santos@bakenbrew.ph')
     expect(created.user.fullName).toBe('Maria Santos')
     expect(await getCurrentStaffUser()).toEqual(created.user)
+
+    // Ensure plaintext password is never stored in localStorage
+    const rawAccounts = window.localStorage.getItem('bnb.staff.demo-accounts') ?? ''
+    expect(rawAccounts).not.toContain('Password123')
 
     await logoutStaff()
     expect(await getCurrentStaffUser()).toBeNull()
@@ -45,11 +54,29 @@ describe('staff authentication service (local preview)', () => {
     expect(signedIn).toEqual(created.user)
   })
 
-  it('rejects duplicate email registration and invalid login credentials', async () => {
+  it('rejects invalid invitation codes, duplicate emails, and SQL injection payloads', async () => {
+    await expect(
+      registerStaff({
+        fullName: 'Juan Dela Cruz',
+        email: 'juan@bakenbrew.ph',
+        invitationCode: 'WRONG-CODE-99',
+        password: 'Password123',
+      }),
+    ).rejects.toThrow('Invalid or expired staff invitation code')
+
+    await expect(
+      registerStaff({
+        fullName: "Admin'; DROP TABLE orders;--",
+        email: 'juan@bakenbrew.ph',
+        invitationCode: LOCAL_DEV_INVITATION_CODE,
+        password: 'Password123',
+      }),
+    ).rejects.toThrow('valid full name')
+
     await registerStaff({
       fullName: 'Juan Dela Cruz',
       email: 'juan@bakenbrew.ph',
-      invitationCode: 'BNB-01',
+      invitationCode: LOCAL_DEV_INVITATION_CODE,
       password: 'Password123',
     })
 
@@ -57,7 +84,7 @@ describe('staff authentication service (local preview)', () => {
       registerStaff({
         fullName: 'Juan Clone',
         email: 'juan@bakenbrew.ph',
-        invitationCode: 'BNB-01',
+        invitationCode: LOCAL_DEV_INVITATION_CODE,
         password: 'Password123',
       }),
     ).rejects.toThrow('already exists')
@@ -65,38 +92,38 @@ describe('staff authentication service (local preview)', () => {
     await expect(
       loginStaff({
         email: 'juan@bakenbrew.ph',
-        password: 'wrong-password',
+        password: 'wrong-password1',
       }),
     ).rejects.toThrow('Invalid email address or password')
   })
 
-  it('validates registration fields and password reset email', async () => {
+  it('locks out repeated failed login attempts and validates password policy', async () => {
+    await registerStaff({
+      fullName: 'Ana Reyes',
+      email: 'ana@bakenbrew.ph',
+      invitationCode: LOCAL_DEV_INVITATION_CODE,
+      password: 'Password123',
+    })
+    await logoutStaff()
+
+    for (let i = 0; i < 5; i += 1) {
+      await expect(
+        loginStaff({ email: 'ana@bakenbrew.ph', password: 'WrongPassword1' }),
+      ).rejects.toThrow('Invalid email address or password')
+    }
+
     await expect(
-      registerStaff({
-        fullName: '',
-        email: 'staff@bakenbrew.ph',
-        invitationCode: 'BNB-01',
-        password: 'Password123',
-      }),
-    ).rejects.toThrow('full name')
+      loginStaff({ email: 'ana@bakenbrew.ph', password: 'Password123' }),
+    ).rejects.toThrow('Too many failed attempts')
 
     await expect(
       registerStaff({
-        fullName: 'Ana',
-        email: 'staff@bakenbrew.ph',
-        invitationCode: '',
-        password: 'Password123',
+        fullName: 'New User',
+        email: 'new@bakenbrew.ph',
+        invitationCode: LOCAL_DEV_INVITATION_CODE,
+        password: 'onlyletters',
       }),
-    ).rejects.toThrow('invitation code')
-
-    await expect(
-      registerStaff({
-        fullName: 'Ana',
-        email: 'staff@bakenbrew.ph',
-        invitationCode: 'BNB-01',
-        password: 'short',
-      }),
-    ).rejects.toThrow('at least 8 characters')
+    ).rejects.toThrow('letter and one number')
 
     await expect(requestPasswordReset('not-an-email')).rejects.toThrow('work email')
     await expect(requestPasswordReset('ana@bakenbrew.ph')).resolves.toBeUndefined()

@@ -14,6 +14,7 @@ import { menuCategories } from '@/data/menu'
 
 <style scoped>
 .staff-page {
+  margin: 24px;
   padding: 28px;
   border: 3px dashed #e1dbc7;
   border-radius: 20px;

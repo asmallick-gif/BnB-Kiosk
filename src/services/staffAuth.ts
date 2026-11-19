@@ -1,4 +1,14 @@
 import { supabase } from '@/lib/supabase'
+import {
+  createAttemptThrottle,
+  hashSecretWithSalt,
+  timingSafeEqualString,
+  validateEmail,
+  validateFullName,
+  validateInvitationCode,
+  validateLoginPassword,
+  validateNewPassword,
+} from '@/lib/security'
 
 export interface StaffUser {
   id: string
@@ -27,22 +37,36 @@ interface LocalDemoStaffRecord {
   id: string
   fullName: string
   email: string
-  invitationCode: string
-  password: string
+  invitationCodeHash: string
+  passwordSalt: string
+  passwordHash: string
 }
 
 // Local development adapter lets staff auth UI be exercised before Supabase auth is configured.
 // Deliberately unavailable in production builds.
 export const isLocalStaffAuthDemo = !supabase && import.meta.env.DEV
 
+// Dev-only invitation code for local preview testing (override via VITE_STAFF_DEV_INVITE_CODE).
+// In production with Supabase, invitation codes are verified server-side against public.staff_invitations.
+export const LOCAL_DEV_INVITATION_CODE = (
+  import.meta.env.VITE_STAFF_DEV_INVITE_CODE || 'BNB-5JSN-SYN3'
+)
+  .trim()
+  .toUpperCase()
+
 const demoAccountsKey = 'bnb.staff.demo-accounts'
 const demoSessionKey = 'bnb.staff.demo-session'
+const loginThrottle = createAttemptThrottle(5, 60_000)
 
-const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-
-function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase()
+export function resetLoginThrottleForTests(): void {
+  if (import.meta.env.MODE === 'test') {
+    // Recreating throttle state per email is handled by reset; expose clear via helper below.
+    throttleTrackedKeys.forEach((key) => loginThrottle.reset(key))
+    throttleTrackedKeys.clear()
+  }
 }
+
+const throttleTrackedKeys = new Set<string>()
 
 function readDemoAccounts(): LocalDemoStaffRecord[] {
   const raw = window.localStorage.getItem(demoAccountsKey)
@@ -68,21 +92,19 @@ function toStaffUser(id: string, email: string, fullName?: string): StaffUser {
 }
 
 export async function loginStaff(input: StaffLoginInput): Promise<StaffUser> {
-  const email = normalizeEmail(input.email)
-  const password = input.password
+  const email = validateEmail(input.email)
+  const password = validateLoginPassword(input.password)
 
-  if (!emailPattern.test(email)) {
-    throw new Error('Please enter a valid work email address.')
-  }
-  if (!password) {
-    throw new Error('Please enter your password.')
-  }
+  throttleTrackedKeys.add(email)
+  loginThrottle.checkAllowed(email)
 
   if (supabase) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error || !data.user) {
-      throw new Error(error?.message || 'Invalid email address or password.')
+      loginThrottle.recordFailure(email)
+      throw new Error('Invalid email address or password.')
     }
+    loginThrottle.reset(email)
     const metaName =
       typeof data.user.user_metadata?.full_name === 'string'
         ? data.user.user_metadata.full_name
@@ -95,10 +117,18 @@ export async function loginStaff(input: StaffLoginInput): Promise<StaffUser> {
   }
 
   const account = readDemoAccounts().find((entry) => entry.email === email)
-  if (!account || account.password !== password) {
+  if (!account) {
+    loginThrottle.recordFailure(email)
     throw new Error('Invalid email address or password.')
   }
 
+  const candidateHash = await hashSecretWithSalt(password, account.passwordSalt)
+  if (!timingSafeEqualString(candidateHash, account.passwordHash)) {
+    loginThrottle.recordFailure(email)
+    throw new Error('Invalid email address or password.')
+  }
+
+  loginThrottle.reset(email)
   const user = toStaffUser(account.id, account.email, account.fullName)
   window.localStorage.setItem(demoSessionKey, JSON.stringify(user))
   return user
@@ -107,23 +137,10 @@ export async function loginStaff(input: StaffLoginInput): Promise<StaffUser> {
 export async function registerStaff(
   input: StaffRegistrationInput,
 ): Promise<StaffRegistrationResult> {
-  const fullName = input.fullName.trim()
-  const email = normalizeEmail(input.email)
-  const invitationCode = input.invitationCode.trim()
-  const password = input.password
-
-  if (!fullName) {
-    throw new Error('Please enter your full name.')
-  }
-  if (!emailPattern.test(email)) {
-    throw new Error('Please enter a valid work email address.')
-  }
-  if (!invitationCode) {
-    throw new Error('Please enter your staff invitation code.')
-  }
-  if (password.length < 8) {
-    throw new Error('Password must be at least 8 characters long.')
-  }
+  const fullName = validateFullName(input.fullName)
+  const email = validateEmail(input.email)
+  const invitationCode = validateInvitationCode(input.invitationCode)
+  const password = validateNewPassword(input.password)
 
   if (supabase) {
     const { data, error } = await supabase.auth.signUp({
@@ -149,17 +166,26 @@ export async function registerStaff(
     throw new Error('Staff registration is unavailable. Please configure Supabase.')
   }
 
+  if (!timingSafeEqualString(invitationCode, LOCAL_DEV_INVITATION_CODE)) {
+    throw new Error('Invalid or expired staff invitation code.')
+  }
+
   const accounts = readDemoAccounts()
   if (accounts.some((entry) => entry.email === email)) {
     throw new Error('An account with this work email already exists.')
   }
 
+  const passwordSalt = crypto.randomUUID()
+  const passwordHash = await hashSecretWithSalt(password, passwordSalt)
+  const invitationCodeHash = await hashSecretWithSalt(invitationCode, 'bnb-invite')
+
   const record: LocalDemoStaffRecord = {
     id: crypto.randomUUID(),
     fullName,
     email,
-    invitationCode,
-    password,
+    invitationCodeHash,
+    passwordSalt,
+    passwordHash,
   }
   writeDemoAccounts([...accounts, record])
   const user = toStaffUser(record.id, record.email, record.fullName)
@@ -168,17 +194,14 @@ export async function registerStaff(
 }
 
 export async function requestPasswordReset(emailInput: string): Promise<void> {
-  const email = normalizeEmail(emailInput)
-  if (!emailPattern.test(email)) {
-    throw new Error('Please enter your work email address to reset your password.')
-  }
+  const email = validateEmail(emailInput)
 
   if (supabase) {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/staff/login`,
+      redirectTo: `${window.location.origin}/login`,
     })
     if (error) {
-      throw new Error(error.message || 'Unable to send password reset email.')
+      throw new Error('Unable to send password reset email. Please try again later.')
     }
     return
   }

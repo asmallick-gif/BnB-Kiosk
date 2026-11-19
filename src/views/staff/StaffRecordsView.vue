@@ -1,35 +1,25 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { queueLabel, type KioskOrder } from '@/services/orders'
-import { listStaffOrders } from '@/services/staffOrders'
+import { queueLabel } from '@/services/orders'
+import { useStaffOrdersStore } from '@/stores/staffOrders'
 
-const orders = ref<KioskOrder[]>([])
-const loading = ref(true)
-
-const finishedOrders = computed(() =>
-  orders.value.filter((order) => ['completed', 'rejected'].includes(order.status)),
-)
-
-onMounted(async () => {
-  try {
-    orders.value = await listStaffOrders()
-  } finally {
-    loading.value = false
-  }
-})
+const ordersStore = useStaffOrdersStore()
 </script>
 
 <template>
   <section class="staff-page">
     <h1 class="staff-page__title">Order Records</h1>
     <p class="staff-page__subtitle">
-      Placeholder records view for completed and rejected orders. Ready for your Figma layout.
+      Placeholder records view for completed and cancelled orders. Ready for your Figma layout.
     </p>
 
-    <div v-if="loading" class="staff-empty">Loading records...</div>
-    <div v-else-if="!finishedOrders.length" class="staff-empty">No completed or rejected orders yet.</div>
+    <div v-if="ordersStore.loading && !ordersStore.loaded" class="staff-empty">
+      Loading records...
+    </div>
+    <div v-else-if="!ordersStore.finishedOrders.length" class="staff-empty">
+      No completed or cancelled orders yet.
+    </div>
     <ul v-else class="staff-records-list">
-      <li v-for="order in finishedOrders" :key="order.token" class="staff-records-row">
+      <li v-for="order in ordersStore.finishedOrders" :key="order.token" class="staff-records-row">
         <strong>{{ queueLabel(order.queueNumber) }}</strong>
         <span>{{ order.orderType }} &middot; {{ order.paymentMethod }}</span>
         <span>&#8369;{{ order.total.toFixed(2) }}</span>
@@ -41,6 +31,7 @@ onMounted(async () => {
 
 <style scoped>
 .staff-page {
+  margin: 24px;
   padding: 28px;
   border: 3px dashed #e1dbc7;
   border-radius: 20px;
