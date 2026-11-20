@@ -218,6 +218,7 @@ create table if not exists public.products (
   name text not null check (char_length(trim(name)) between 1 and 120),
   price numeric(10, 2) not null check (price >= 0),
   available boolean not null default true,
+  stock_quantity integer not null default 10 check (stock_quantity between 0 and 999),
   updated_at timestamptz not null default now()
 );
 
@@ -276,7 +277,7 @@ revoke all on table public.order_items from public, anon, authenticated;
 
 grant select on table public.staff_profiles to authenticated;
 grant select on table public.products to anon, authenticated;
-grant update (available, updated_at) on table public.products to authenticated;
+grant update (available, stock_quantity, updated_at) on table public.products to authenticated;
 grant select on table public.orders to authenticated;
 grant select on table public.order_items to authenticated;
 
@@ -521,6 +522,56 @@ begin
 end;
 $$;
 
+create or replace function public.staff_update_product_availability(
+  p_id text,
+  p_available boolean,
+  p_quantity integer
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_product public.products%rowtype;
+  v_resolved_available boolean;
+begin
+  if not public.is_active_staff() then
+    raise exception 'Unauthorized: active staff account required.';
+  end if;
+
+  if p_id is null or p_id !~ '^[a-z0-9-]{1,64}$' then
+    raise exception 'Invalid product identifier.';
+  end if;
+
+  if p_quantity is null or p_quantity < 0 or p_quantity > 999 then
+    raise exception 'Quantity must be between 0 and 999.';
+  end if;
+
+  v_resolved_available := case when p_quantity = 0 then false else coalesce(p_available, false) end;
+
+  update public.products
+  set available = v_resolved_available,
+      stock_quantity = p_quantity,
+      updated_at = now()
+  where id = p_id
+  returning * into v_product;
+
+  if not found then
+    raise exception 'Product not found.';
+  end if;
+
+  return jsonb_build_object(
+    'id', v_product.id,
+    'categoryId', v_product.category_id,
+    'name', v_product.name,
+    'price', v_product.price,
+    'available', v_product.available,
+    'quantity', v_product.stock_quantity
+  );
+end;
+$$;
+
 -- Revoke default PUBLIC execution on all custom functions before explicit minimal grants.
 revoke all on function public.hash_invitation_code(text) from public, anon, authenticated;
 revoke all on function public.is_active_staff() from public, anon, authenticated;
@@ -533,11 +584,13 @@ revoke all on function public.create_kiosk_order(jsonb) from public, anon, authe
 revoke all on function public.get_kiosk_order(uuid) from public, anon, authenticated;
 revoke all on function public.staff_list_orders() from public, anon, authenticated;
 revoke all on function public.staff_update_order_status(uuid, text) from public, anon, authenticated;
+revoke all on function public.staff_update_product_availability(text, boolean, integer) from public, anon, authenticated;
 
 grant execute on function public.create_kiosk_order(jsonb) to anon, authenticated;
 grant execute on function public.get_kiosk_order(uuid) to anon, authenticated;
 grant execute on function public.staff_list_orders() to authenticated;
 grant execute on function public.staff_update_order_status(uuid, text) to authenticated;
+grant execute on function public.staff_update_product_availability(text, boolean, integer) to authenticated;
 grant execute on function public.create_staff_invitation(text, text, integer, integer) to authenticated;
 grant execute on function public.generate_staff_invitation(text, integer, integer) to authenticated;
 

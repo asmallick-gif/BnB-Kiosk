@@ -6,6 +6,7 @@ const CONTROL_CHARS = /[\u0000-\u001F\u007F]/g
 const EMAIL_PATTERN = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+$/i
 const FULL_NAME_PATTERN = /^[\p{L}\p{M}][\p{L}\p{M}\s'.-]{1,79}$/u
 const INVITE_CODE_PATTERN = /^[A-Z0-9-]{6,32}$/
+const PRODUCT_ID_PATTERN = /^[a-z0-9-]{1,64}$/
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export const MAX_EMAIL_LENGTH = 254
@@ -61,6 +62,21 @@ export function validateLoginPassword(password: string): string {
 
 export function isValidUuid(value: string): boolean {
   return UUID_PATTERN.test(value)
+}
+
+export function validateProductId(raw: string): string {
+  const id = stripControlChars(raw).trim()
+  if (!PRODUCT_ID_PATTERN.test(id)) {
+    throw new Error('Invalid product identifier.')
+  }
+  return id
+}
+
+export function validateStockQuantity(quantity: number): number {
+  if (!Number.isSafeInteger(quantity) || quantity < 0 || quantity > 999) {
+    throw new Error('Quantity must be a whole number between 0 and 999.')
+  }
+  return quantity
 }
 
 export function sanitizeInternalRedirect(raw: unknown): string | null {

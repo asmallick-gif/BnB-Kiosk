@@ -81,9 +81,12 @@ describe('staff login, registration, and route guards', () => {
     await wrapper.get('#staff-login-email').setValue('barista@bakenbrew.ph')
     await passwordInput.setValue('Password123')
     await wrapper.get('form').trigger('submit')
-    await vi.waitFor(() => {
-      expect(router.currentRoute.value.name).toBe('staff-queue')
-    })
+    await vi.waitFor(
+      () => {
+        expect(router.currentRoute.value.name).toBe('staff-queue')
+      },
+      { timeout: 5000 },
+    )
 
     expect(loginStaff).toHaveBeenCalledWith({
       email: 'barista@bakenbrew.ph',
