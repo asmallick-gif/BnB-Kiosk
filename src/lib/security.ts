@@ -5,6 +5,10 @@
 const CONTROL_CHARS = /[\u0000-\u001F\u007F]/g
 const EMAIL_PATTERN = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+$/i
 const FULL_NAME_PATTERN = /^[\p{L}\p{M}][\p{L}\p{M}\s'.-]{1,79}$/u
+const NAME_PART_PATTERN = /^[\p{L}\p{M}][\p{L}\p{M}\s'.-]{0,39}$/u
+const MIDDLE_INITIAL_PATTERN = /^[\p{L}\p{M}]{1,2}\.?$/u
+const HOME_ADDRESS_PATTERN = /^[\p{L}\p{M}\d\s,.'#/\-()]{0,200}$/u
+const SAFE_AVATAR_DATA_URL = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/
 const INVITE_CODE_PATTERN = /^[A-Z0-9-]{6,32}$/
 const PRODUCT_ID_PATTERN = /^[a-z0-9-]{1,64}$/
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -31,6 +35,54 @@ export function validateFullName(raw: string): string {
     throw new Error('Please enter a valid full name (letters, spaces, hyphens, or apostrophes).')
   }
   return cleaned
+}
+
+export function validateNamePart(raw: string, fieldLabel: string): string {
+  const cleaned = stripControlChars(raw).trim().replace(/\s+/g, ' ')
+  if (cleaned.length < 1 || cleaned.length > 40 || !NAME_PART_PATTERN.test(cleaned)) {
+    throw new Error(`Please enter a valid ${fieldLabel.toLowerCase()}.`)
+  }
+  return cleaned
+}
+
+export function validateMiddleInitial(raw: string): string {
+  const cleaned = stripControlChars(raw).trim().toUpperCase()
+  if (!cleaned) return ''
+  if (!MIDDLE_INITIAL_PATTERN.test(cleaned)) {
+    throw new Error('Middle initial should be 1 to 2 letters.')
+  }
+  return cleaned.replace(/\.$/, '')
+}
+
+export function validateHomeAddress(raw: string): string {
+  const cleaned = stripControlChars(raw).trim().replace(/\s+/g, ' ')
+  if (!cleaned) return ''
+  if (cleaned.length > 200 || !HOME_ADDRESS_PATTERN.test(cleaned)) {
+    throw new Error('Home address contains unsupported characters or exceeds 200 characters.')
+  }
+  return cleaned
+}
+
+export function validateAvatarValue(raw: string | null | undefined): string {
+  if (!raw) return ''
+  const cleaned = stripControlChars(raw).trim()
+  if (!cleaned) return ''
+  if (SAFE_AVATAR_DATA_URL.test(cleaned)) {
+    // Limit base64 payload to ~2.8MB (roughly a 2MB source image)
+    if (cleaned.length > 2_900_000) {
+      throw new Error('Avatar image must be smaller than 2 MB.')
+    }
+    return cleaned
+  }
+  try {
+    const parsed = new URL(cleaned)
+    if (parsed.protocol === 'https:') {
+      return cleaned
+    }
+  } catch {
+    // Fall through to error
+  }
+  throw new Error('Avatar must be a PNG, JPEG, or WebP image.')
 }
 
 export function validateInvitationCode(raw: string): string {

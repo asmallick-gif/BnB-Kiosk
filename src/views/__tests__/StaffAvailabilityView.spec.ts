@@ -42,6 +42,7 @@ describe('StaffAvailabilityView', () => {
               component: StaffAvailabilityView,
             },
             { path: 'records', name: 'staff-records', component: { template: '<div />' } },
+            { path: 'account', name: 'staff-account', component: { template: '<div />' } },
           ],
         },
         { path: '/login', name: 'staff-login', component: { template: '<div />' } },

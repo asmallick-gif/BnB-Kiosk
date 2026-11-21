@@ -30,9 +30,16 @@ create table if not exists public.staff_profiles (
     and email ~* '^[a-z0-9.!#$%&''*+/=?^_`{|}~-]+@[a-z0-9-]+(\.[a-z0-9-]+)+$'
   ),
   full_name text not null check (char_length(trim(full_name)) between 2 and 80),
+  first_name text not null default '' check (char_length(first_name) <= 40),
+  last_name text not null default '' check (char_length(last_name) <= 40),
+  middle_initial text not null default '' check (char_length(middle_initial) <= 2),
+  home_address text not null default '' check (char_length(home_address) <= 200),
+  avatar_url text not null default '' check (char_length(avatar_url) <= 2900000),
   role text not null default 'staff' check (role in ('staff', 'manager', 'admin')),
   active boolean not null default true,
-  created_at timestamptz not null default now()
+  previous_login_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 create or replace function public.hash_invitation_code(p_code text)
@@ -572,6 +579,82 @@ begin
 end;
 $$;
 
+create or replace function public.staff_update_own_profile(
+  p_first_name text,
+  p_last_name text,
+  p_middle_initial text default '',
+  p_home_address text default '',
+  p_avatar_url text default ''
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_first text := trim(regexp_replace(coalesce(p_first_name, ''), '\s+', ' ', 'g'));
+  v_last text := trim(regexp_replace(coalesce(p_last_name, ''), '\s+', ' ', 'g'));
+  v_mid text := upper(regexp_replace(trim(coalesce(p_middle_initial, '')), '\.$', ''));
+  v_addr text := trim(regexp_replace(coalesce(p_home_address, ''), '\s+', ' ', 'g'));
+  v_avatar text := trim(coalesce(p_avatar_url, ''));
+  v_full text;
+  v_profile public.staff_profiles%rowtype;
+begin
+  if not public.is_active_staff() then
+    raise exception 'Unauthorized: active staff account required.';
+  end if;
+
+  if char_length(v_first) < 1 or char_length(v_first) > 40
+     or char_length(v_last) < 1 or char_length(v_last) > 40 then
+    raise exception 'Please provide a valid first and last name.';
+  end if;
+
+  if char_length(v_mid) > 2 then
+    raise exception 'Middle initial must be 1 to 2 letters.';
+  end if;
+
+  if char_length(v_addr) > 200 then
+    raise exception 'Home address must be 200 characters or fewer.';
+  end if;
+
+  if char_length(v_avatar) > 2900000 then
+    raise exception 'Avatar image is too large.';
+  end if;
+
+  v_full := case
+    when v_mid <> '' then v_first || ' ' || v_mid || '. ' || v_last
+    else v_first || ' ' || v_last
+  end;
+
+  update public.staff_profiles
+  set full_name = v_full,
+      first_name = v_first,
+      last_name = v_last,
+      middle_initial = v_mid,
+      home_address = v_addr,
+      avatar_url = v_avatar,
+      updated_at = now()
+  where id = auth.uid()
+  returning * into v_profile;
+
+  if not found then
+    raise exception 'Staff profile not found.';
+  end if;
+
+  return jsonb_build_object(
+    'id', v_profile.id,
+    'email', v_profile.email,
+    'fullName', v_profile.full_name,
+    'firstName', v_profile.first_name,
+    'lastName', v_profile.last_name,
+    'middleInitial', v_profile.middle_initial,
+    'homeAddress', v_profile.home_address,
+    'avatarUrl', v_profile.avatar_url,
+    'role', v_profile.role
+  );
+end;
+$$;
+
 -- Revoke default PUBLIC execution on all custom functions before explicit minimal grants.
 revoke all on function public.hash_invitation_code(text) from public, anon, authenticated;
 revoke all on function public.is_active_staff() from public, anon, authenticated;
@@ -585,12 +668,14 @@ revoke all on function public.get_kiosk_order(uuid) from public, anon, authentic
 revoke all on function public.staff_list_orders() from public, anon, authenticated;
 revoke all on function public.staff_update_order_status(uuid, text) from public, anon, authenticated;
 revoke all on function public.staff_update_product_availability(text, boolean, integer) from public, anon, authenticated;
+revoke all on function public.staff_update_own_profile(text, text, text, text, text) from public, anon, authenticated;
 
 grant execute on function public.create_kiosk_order(jsonb) to anon, authenticated;
 grant execute on function public.get_kiosk_order(uuid) to anon, authenticated;
 grant execute on function public.staff_list_orders() to authenticated;
 grant execute on function public.staff_update_order_status(uuid, text) to authenticated;
 grant execute on function public.staff_update_product_availability(text, boolean, integer) to authenticated;
+grant execute on function public.staff_update_own_profile(text, text, text, text, text) to authenticated;
 grant execute on function public.create_staff_invitation(text, text, integer, integer) to authenticated;
 grant execute on function public.generate_staff_invitation(text, integer, integer) to authenticated;
 

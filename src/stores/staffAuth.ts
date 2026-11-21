@@ -8,7 +8,10 @@ import {
   registerStaff,
   requestPasswordReset,
   subscribeStaffAuthChanges,
+  updateStaffPassword,
+  updateStaffProfile,
   type StaffLoginInput,
+  type StaffProfileUpdateInput,
   type StaffRegistrationInput,
   type StaffRegistrationResult,
   type StaffUser,
@@ -60,6 +63,19 @@ export const useStaffAuthStore = defineStore('staffAuth', () => {
     return result
   }
 
+  async function updateProfile(input: StaffProfileUpdateInput): Promise<StaffUser> {
+    const updated = await updateStaffProfile(input)
+    user.value = updated
+    return updated
+  }
+
+  async function changePassword(input: {
+    newPassword: string
+    confirmPassword: string
+  }): Promise<void> {
+    await updateStaffPassword(input)
+  }
+
   async function resetPassword(email: string): Promise<void> {
     await requestPasswordReset(email)
   }
@@ -77,6 +93,8 @@ export const useStaffAuthStore = defineStore('staffAuth', () => {
     init,
     login,
     register,
+    updateProfile,
+    changePassword,
     resetPassword,
     logout,
   }

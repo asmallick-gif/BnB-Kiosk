@@ -41,6 +41,7 @@ describe('StaffQueueView payment prompt and order lifecycle', () => {
             { path: 'queue', name: 'staff-queue', component: StaffQueueView },
             { path: 'availability', name: 'staff-availability', component: { template: '<div />' } },
             { path: 'records', name: 'staff-records', component: { template: '<div />' } },
+            { path: 'account', name: 'staff-account', component: { template: '<div />' } },
           ],
         },
         { path: '/login', name: 'staff-login', component: { template: '<div />' } },

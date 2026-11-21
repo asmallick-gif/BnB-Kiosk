@@ -42,6 +42,11 @@ export function createStaffRoutes(prefix = ''): RouteRecordRaw[] {
           name: 'staff-records',
           component: () => import('../views/staff/StaffRecordsView.vue'),
         },
+        {
+          path: 'account',
+          name: 'staff-account',
+          component: () => import('../views/staff/StaffAccountView.vue'),
+        },
       ],
     },
   ]

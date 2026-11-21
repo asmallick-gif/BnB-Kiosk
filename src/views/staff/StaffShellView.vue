@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted } from 'vue'
 import { RouterLink, RouterView, useRouter } from 'vue-router'
 import { useStaffAuthStore } from '@/stores/staffAuth'
 import { useStaffOrdersStore } from '@/stores/staffOrders'
@@ -10,7 +10,6 @@ const router = useRouter()
 const authStore = useStaffAuthStore()
 const ordersStore = useStaffOrdersStore()
 
-const showAccountModal = ref(false)
 let stopWatching: (() => void) | null = null
 
 onMounted(() => {
@@ -22,7 +21,6 @@ onUnmounted(() => {
 })
 
 async function handleSignOut() {
-  showAccountModal.value = false
   await authStore.logout()
   await router.replace({ name: 'staff-login' })
 }
@@ -59,49 +57,13 @@ async function handleSignOut() {
       </nav>
 
       <div class="sidebar-footer">
-        <button type="button" class="sidebar-action-btn" @click="showAccountModal = true">
-          Account
-        </button>
+        <RouterLink :to="{ name: 'staff-account' }" class="sidebar-action-btn">Account</RouterLink>
         <button type="button" class="sidebar-action-btn" @click="handleSignOut">Log Out</button>
       </div>
     </aside>
 
     <div class="dashboard-main">
       <RouterView />
-    </div>
-
-    <div
-      v-if="showAccountModal"
-      class="account-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="staff-account-title"
-      @click.self="showAccountModal = false"
-    >
-      <div class="account-dialog">
-        <h2 id="staff-account-title" class="account-dialog__title">Staff Account</h2>
-        <p class="account-dialog__name">{{ authStore.user?.fullName }}</p>
-        <p class="account-dialog__email">{{ authStore.user?.email }}</p>
-        <p v-if="authStore.isLocalDemo" class="account-dialog__demo">
-          Local preview mode (Supabase not configured)
-        </p>
-        <div class="account-dialog__actions">
-          <button
-            type="button"
-            class="account-dialog__btn account-dialog__btn--secondary"
-            @click="showAccountModal = false"
-          >
-            Close
-          </button>
-          <button
-            type="button"
-            class="account-dialog__btn account-dialog__btn--primary"
-            @click="handleSignOut"
-          >
-            Log Out
-          </button>
-        </div>
-      </div>
     </div>
   </div>
 </template>
@@ -250,15 +212,17 @@ async function handleSignOut() {
   font-size: 20px;
   font-weight: 700;
   line-height: normal;
+  text-decoration: none;
   cursor: pointer;
   transition:
     background-color 140ms ease,
     color 140ms ease;
 }
 
-.sidebar-action-btn:hover {
+.sidebar-action-btn:hover,
+.sidebar-action-btn.router-link-active {
   background-color: #f9f3dd;
-  color: #405909;
+  color: #5d7706;
 }
 
 .sidebar-action-btn:focus-visible,
@@ -273,81 +237,6 @@ async function handleSignOut() {
   display: flex;
   flex-direction: column;
   background-color: #f8f8f6;
-}
-
-.account-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  background-color: rgba(19, 21, 8, 0.45);
-}
-
-.account-dialog {
-  width: min(340px, 100%);
-  padding: 24px;
-  border: 3px dashed #e1dbc7;
-  border-radius: 20px;
-  background-color: #ffffff;
-  text-align: center;
-}
-
-.account-dialog__title {
-  margin: 0 0 12px;
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: 1px;
-}
-
-.account-dialog__name {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.account-dialog__email {
-  margin: 4px 0 0;
-  font-size: 13px;
-  color: #5d7706;
-}
-
-.account-dialog__demo {
-  margin: 12px 0 0;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background-color: #f9f3dd;
-  color: #6e6c65;
-  font-size: 11px;
-}
-
-.account-dialog__actions {
-  display: flex;
-  gap: 10px;
-  margin-top: 20px;
-}
-
-.account-dialog__btn {
-  flex: 1;
-  height: 38px;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.account-dialog__btn--secondary {
-  border: 1px solid #898781;
-  background-color: #ffffff;
-  color: #000000;
-}
-
-.account-dialog__btn--primary {
-  border: 0;
-  background-color: #5d7706;
-  color: #ffffff;
 }
 
 @media (max-width: 720px) {
