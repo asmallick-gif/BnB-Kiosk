@@ -269,16 +269,3 @@ Select **Log Out** in the staff navigation when finished. The application return
 | Records appear empty.                                  | Try All time, clear the search, select All order types, and confirm staff marked an order as served.                                                                |
 | A profile or password save button is unavailable.      | Make a valid change. For passwords, satisfy every displayed requirement and match both entries.                                                                     |
 | An avatar is rejected.                                 | Choose PNG, JPG, or WebP and keep the file smaller than 2 MB.                                                                                                       |
-
-If the problem continues, give the project maintainer the screen name, order number if relevant, exact message, and steps that led to it. Avoid submitting a second order just to clear a waiting or connection message.
-
-## Current demo limitations
-
-- Local-preview orders, accounts, and staff inventory are stored in the current browser. They are not shared with another device, browser profile, address, or port. Clearing that site's browser data removes its local demo data.
-- Cash and E-wallet are recorded payment choices. The kiosk does not process wallet payments, display a payment QR, or automatically verify payment. Staff carry out the cashier check.
-- The staff inventory and the customer's sample menu are separate, as described in the inventory section.
-- The Receipt Preview is an on-screen review; this workflow does not provide a receipt-printing button.
-- Feedback is given directly to staff. The Have Feedback? control does not save or send feedback.
-- Local-preview password recovery does not send email. Configured online authentication may require email verification or additional confirmation when account details change.
-
-Screenshots and instructions should be reviewed again when these features or their controls change.
