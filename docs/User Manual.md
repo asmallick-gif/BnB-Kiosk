@@ -1,11 +1,11 @@
 # BnB-Kiosk User Manual
 
 **Bake'n Brew · Customer kiosk and staff portal**  
-Application version: **0.0.0** · Reviewed: **22 November 2026**
+Application version: **1** · Reviewed: **2026**
 
 This manual explains how customers place and track orders, and how staff manage orders, availability, records, and their account. It describes the current application.
 
-The screenshots are direct captures from the running local preview, saved at **624 × 892 pixels**. Longer pages have separate views taken after scrolling. Names, email addresses, orders, and sales figures shown are sample data; your values will differ.
+Names, email addresses, orders, and sales figures shown are sample data; your values will differ.
 
 ## Contents
 
