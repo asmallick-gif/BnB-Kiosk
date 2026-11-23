@@ -59,25 +59,25 @@ describe('StaffAvailabilityView', () => {
   it('toggles item availability, adjusts quantity by +/-1 and +/-5, filters, and shows toast', async () => {
     const wrapper = await mountAvailability()
 
-    // Search for Spanish Latte
-    await wrapper.get('.available-search__input').setValue('Spanish Latte')
+    // Search for Beef Nachos (unique item name)
+    await wrapper.get('.available-search__input').setValue('Beef Nachos')
     await flushPromises()
 
     expect(wrapper.findAll('.available-row')).toHaveLength(1)
-    expect(wrapper.get('.available-row__name').text()).toBe('Spanish Latte')
+    expect(wrapper.get('.available-row__name').text()).toBe('Beef Nachos')
     expect(wrapper.get('.avail-pill').text()).toBe('Yes')
     expect(wrapper.get('.qty-stepper__value').text()).toBe('10')
 
     // Click -5 twice to bring quantity from 10 -> 5 -> 0 (auto-marks unavailable + toast)
-    await wrapper.get('button[aria-label="Decrease Spanish Latte quantity by 5"]').trigger('click')
+    await wrapper.get('button[aria-label="Decrease Beef Nachos quantity by 5"]').trigger('click')
     await flushPromises()
     expect(wrapper.get('.qty-stepper__value').text()).toBe('5')
 
-    await wrapper.get('button[aria-label="Decrease Spanish Latte quantity by 5"]').trigger('click')
+    await wrapper.get('button[aria-label="Decrease Beef Nachos quantity by 5"]').trigger('click')
     await flushPromises()
     expect(wrapper.get('.qty-stepper__value').text()).toBe('0')
     expect(wrapper.get('.avail-pill').text()).toBe('No')
-    expect(wrapper.get('.available-toast').text()).toContain('Spanish Latte is unavailable')
+    expect(wrapper.get('.available-toast').text()).toContain('Beef Nachos is unavailable')
 
     // Clear search and filter by Unavailable
     await wrapper.get('.available-search__input').setValue('')
@@ -86,12 +86,12 @@ describe('StaffAvailabilityView', () => {
     await flushPromises()
 
     expect(wrapper.findAll('.available-row')).toHaveLength(1)
-    expect(wrapper.get('.available-row__name').text()).toBe('Spanish Latte')
+    expect(wrapper.get('.available-row__name').text()).toBe('Beef Nachos')
 
     // Toggle back to Available (auto bumps qty from 0 to 1)
     await wrapper.get('.avail-pill').trigger('click')
     await flushPromises()
-    expect(wrapper.get('.available-toast').text()).toContain('Spanish Latte is available')
+    expect(wrapper.get('.available-toast').text()).toContain('Beef Nachos is available')
     expect(wrapper.findAll('.available-row')).toHaveLength(0)
 
     wrapper.unmount()
