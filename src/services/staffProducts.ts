@@ -81,20 +81,19 @@ export async function listStaffProducts(): Promise<StaffProduct[]> {
     }
 
     const categoryNames = new Map(menuCategories.map((cat) => [cat.id, cat.name]))
-    return data.map((row) => ({
-      id: String(row.id),
-      categoryId: String(row.category_id),
-      categoryName: categoryNames.get(String(row.category_id)) ?? String(row.category_id),
-      name: String(row.name),
-      price: Number(row.price),
-      available: Boolean(row.available),
-      quantity:
-        typeof row.stock_quantity === 'number'
-          ? row.stock_quantity
-          : Boolean(row.available)
-            ? 10
-            : 0,
-    }))
+    return data.map((row) => {
+      const quantity =
+        typeof row.stock_quantity === 'number' ? row.stock_quantity : row.available ? 10 : 0
+      return {
+        id: String(row.id),
+        categoryId: String(row.category_id),
+        categoryName: categoryNames.get(String(row.category_id)) ?? String(row.category_id),
+        name: String(row.name),
+        price: Number(row.price),
+        available: quantity === 0 ? false : Boolean(row.available),
+        quantity,
+      }
+    })
   }
 
   if (!isLocalStaffProductsDemo) {

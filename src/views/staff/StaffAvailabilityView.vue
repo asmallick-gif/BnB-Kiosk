@@ -70,6 +70,8 @@ async function applyStockUpdate(
         !updated.available,
       )
     }
+  } catch {
+    // Store sets errorMessage for the alert banner.
   } finally {
     busyProductId.value = null
   }

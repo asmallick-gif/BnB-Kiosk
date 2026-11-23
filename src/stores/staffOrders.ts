@@ -60,14 +60,19 @@ export const useStaffOrdersStore = defineStore('staffOrders', () => {
 
   async function setOrderStatus(token: string, nextStatus: OrderStatus): Promise<KioskOrder> {
     errorMessage.value = ''
-    const updated = await updateStaffOrderStatus(token, nextStatus)
-    const index = orders.value.findIndex((order) => order.token === token)
-    if (index >= 0) {
-      orders.value[index] = updated
-    } else {
-      await refresh()
+    try {
+      const updated = await updateStaffOrderStatus(token, nextStatus)
+      const index = orders.value.findIndex((order) => order.token === token)
+      if (index >= 0) {
+        orders.value[index] = updated
+      } else {
+        await refresh()
+      }
+      return updated
+    } catch (error) {
+      errorMessage.value = error instanceof Error ? error.message : 'Unable to update order status.'
+      throw error
     }
-    return updated
   }
 
   function startWatching(): () => void {

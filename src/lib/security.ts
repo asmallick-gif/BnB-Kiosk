@@ -2,7 +2,6 @@
 // Note: Server-side SQL injection protection is enforced by parameterized Supabase RPCs,
 // PostgreSQL CHECK constraints, and Row Level Security in docs/supabase-staff-schema.sql.
 
-const CONTROL_CHARS = /[\u0000-\u001F\u007F]/g
 const EMAIL_PATTERN = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+$/i
 const FULL_NAME_PATTERN = /^[\p{L}\p{M}][\p{L}\p{M}\s'.-]{1,79}$/u
 const NAME_PART_PATTERN = /^[\p{L}\p{M}][\p{L}\p{M}\s'.-]{0,39}$/u
@@ -18,7 +17,12 @@ export const MIN_PASSWORD_LENGTH = 8
 export const MAX_PASSWORD_LENGTH = 128
 
 export function stripControlChars(value: string): string {
-  return value.replace(CONTROL_CHARS, '')
+  let result = ''
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i)
+    if (code > 0x1f && code !== 0x7f) result += value[i]
+  }
+  return result
 }
 
 export function validateEmail(raw: string): string {

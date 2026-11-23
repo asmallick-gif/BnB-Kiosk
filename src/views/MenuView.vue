@@ -2,7 +2,13 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import logo from '@/assets/logos/bnb-logo.svg'
-import { menuCategories, menuPromotion, type MenuItem } from '@/data/menu'
+import { menuPromotion } from '@/data/menu'
+import {
+  isLocalMenuDemo,
+  listMenuProducts,
+  type Product,
+  type ProductCategory,
+} from '@/services/products'
 import CheckoutView from './CheckoutView.vue'
 import { activeOrderKey } from '@/services/orders'
 
@@ -10,7 +16,10 @@ const route = useRoute()
 const router = useRouter()
 const menuScroller = ref<HTMLElement | null>(null)
 const categoryNav = ref<HTMLElement | null>(null)
-const activeCategory = ref(menuCategories[0]?.id ?? '')
+const categories = ref<ProductCategory[]>([])
+const loadingMenu = ref(true)
+const menuError = ref('')
+const activeCategory = ref('')
 const quantities = ref<Record<string, number>>({})
 const reviewDialog = ref<HTMLDialogElement | null>(null)
 const viewOrderButton = ref<HTMLButtonElement | null>(null)
@@ -20,8 +29,10 @@ const checkoutStep = ref(false)
 const paymentMethod = ref<'cash' | 'e-wallet'>('cash')
 const failedImages = ref(new Set<string>())
 const orderType = computed(() => (route.query.type === 'take-out' ? 'Take-out' : 'Dine-in'))
-const items = menuCategories.flatMap((category) => category.items)
-const orderItems = computed(() => items.filter((item) => (quantities.value[item.id] ?? 0) > 0))
+const items = computed(() => categories.value.flatMap((category) => category.items))
+const orderItems = computed(() =>
+  items.value.filter((item) => (quantities.value[item.id] ?? 0) > 0),
+)
 const checkoutItems = computed(() =>
   orderItems.value.map((item) => ({
     id: item.id,
@@ -32,7 +43,7 @@ const checkoutItems = computed(() =>
 )
 const itemCount = computed(() => Object.values(quantities.value).reduce((sum, n) => sum + n, 0))
 const subtotal = computed(() =>
-  items.reduce((sum, item) => sum + item.price * (quantities.value[item.id] ?? 0), 0),
+  items.value.reduce((sum, item) => sum + item.price * (quantities.value[item.id] ?? 0), 0),
 )
 const discount = 0
 const total = computed(() => subtotal.value - discount)
@@ -44,7 +55,7 @@ function updateActiveCategory() {
   if (!scroller) return
   const readingLine =
     scroller.getBoundingClientRect().top + Math.min(100, scroller.clientHeight * 0.2)
-  let current = menuCategories[0]?.id ?? ''
+  let current = categories.value[0]?.id ?? ''
   for (const section of scroller.querySelectorAll<HTMLElement>('.menu-section')) {
     if (section.getBoundingClientRect().top <= readingLine) current = section.id
   }
@@ -75,10 +86,13 @@ watch(activeCategory, async (id) => {
     nav.scrollBy({ top: top + button.offsetHeight - nav.clientHeight })
 })
 
-function addItem(item: MenuItem) {
-  if (item.available) quantities.value[item.id] = (quantities.value[item.id] ?? 0) + 1
+function canAddItem(item: Product) {
+  return item.available && (quantities.value[item.id] ?? 0) < Math.min(99, item.stockQuantity ?? 99)
 }
-async function decreaseItem(item: MenuItem) {
+function addItem(item: Product) {
+  if (canAddItem(item)) quantities.value[item.id] = (quantities.value[item.id] ?? 0) + 1
+}
+async function decreaseItem(item: Product) {
   const quantity = quantities.value[item.id] ?? 0
   if (quantity > 1) {
     quantities.value[item.id] = quantity - 1
@@ -127,10 +141,31 @@ function restoreMenuFocus() {
   if (itemCount.value) viewOrderButton.value?.focus()
   else menuScroller.value?.focus()
 }
+async function loadMenu() {
+  if (!loadingMenu.value) loadingMenu.value = true
+  menuError.value = ''
+  try {
+    categories.value = await listMenuProducts()
+    activeCategory.value = categories.value[0]?.id ?? ''
+  } catch (error) {
+    categories.value = []
+    menuError.value =
+      error instanceof Error ? error.message : 'We could not load the menu. Please try again.'
+  } finally {
+    loadingMenu.value = false
+  }
+  await nextTick()
+  updateActiveCategory()
+}
 onMounted(() => {
   const token = window.sessionStorage.getItem(activeOrderKey)
-  if (token) router.replace({ name: 'order-status', params: { token }, query: { kiosk: '1' } })
-  else updateActiveCategory()
+  if (token)
+    router.replace({
+      name: 'order-status',
+      params: { token },
+      query: { kiosk: '1' },
+    })
+  else void loadMenu()
 })
 </script>
 
@@ -153,7 +188,10 @@ onMounted(() => {
           class="menu-logo"
           role="img"
           aria-label="Bake'n Brew"
-          :style="{ maskImage: `url(${logo})`, WebkitMaskImage: `url(${logo})` }"
+          :style="{
+            maskImage: `url(${logo})`,
+            WebkitMaskImage: `url(${logo})`,
+          }"
         ></span>
       </div>
       <section class="promotion" aria-label="Featured menu items">
@@ -181,7 +219,7 @@ onMounted(() => {
     <div class="menu-body">
       <nav ref="categoryNav" class="category-nav" aria-label="Menu categories">
         <button
-          v-for="category in menuCategories"
+          v-for="category in categories"
           :key="category.id"
           type="button"
           :data-category="category.id"
@@ -198,54 +236,66 @@ onMounted(() => {
         class="menu-content"
         tabindex="0"
         aria-label="Menu items"
+        :aria-busy="loadingMenu"
         @scroll.passive="updateActiveCategory"
       >
-        <section
-          v-for="category in menuCategories"
-          :id="category.id"
-          :key="category.id"
-          class="menu-section"
-          :aria-labelledby="`${category.id}-heading`"
-        >
-          <h2 :id="`${category.id}-heading`">{{ category.name }}</h2>
-          <article v-for="item in category.items" :key="item.id" class="menu-item">
-            <div class="product-image">
-              <img
-                v-if="item.image && !failedImages.has(item.id)"
-                :src="item.image"
-                :alt="item.name"
-                loading="lazy"
-                @error="failedImages.add(item.id)"
-              />
-              <div v-else class="image-placeholder" aria-label="Product image placeholder">
-                <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
-                  <rect x="5" y="7" width="38" height="34" rx="4" />
-                  <circle cx="17" cy="18" r="4" />
-                  <path d="m6 35 12-11 9 8 7-6 9 9" />
-                </svg>
-                <span>Product image</span>
+        <div v-if="loadingMenu" class="menu-message" role="status">Loading menu…</div>
+        <div v-else-if="menuError" class="menu-message" role="alert">
+          <p>{{ menuError }}</p>
+          <button type="button" class="menu-retry" @click="loadMenu">Try again</button>
+        </div>
+        <div v-else-if="!categories.length" class="menu-message" role="status">
+          <p>No menu items are available right now. Please ask the cashier.</p>
+          <button type="button" class="menu-retry" @click="loadMenu">Try again</button>
+        </div>
+        <template v-else>
+          <section
+            v-for="category in categories"
+            :id="category.id"
+            :key="category.id"
+            class="menu-section"
+            :aria-labelledby="`${category.id}-heading`"
+          >
+            <h2 :id="`${category.id}-heading`">{{ category.name }}</h2>
+            <article v-for="item in category.items" :key="item.id" class="menu-item">
+              <div class="product-image">
+                <img
+                  v-if="item.image && !failedImages.has(item.id)"
+                  :src="item.image"
+                  :alt="item.name"
+                  loading="lazy"
+                  @error="failedImages.add(item.id)"
+                />
+                <div v-else class="image-placeholder" aria-label="Product image placeholder">
+                  <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
+                    <rect x="5" y="7" width="38" height="34" rx="4" />
+                    <circle cx="17" cy="18" r="4" />
+                    <path d="m6 35 12-11 9 8 7-6 9 9" />
+                  </svg>
+                  <span>Product image</span>
+                </div>
               </div>
-            </div>
-            <div class="product-details">
-              <h3>{{ item.name }}</h3>
-              <p :class="['availability', { unavailable: !item.available }]">
-                {{ item.available ? 'Available' : 'Unavailable' }}
-              </p>
-              <div class="product-actions">
-                <span class="product-price">{{ money(item.price) }}</span>
-                <button
-                  type="button"
-                  class="add-button"
-                  :disabled="!item.available"
-                  :aria-label="`Add ${item.name} to order`"
-                  @click="addItem(item)"
-                >
-                  Add to order
-                </button>
+              <div class="product-details">
+                <h3>{{ item.name }}</h3>
+                <p :class="['availability', { unavailable: !item.available }]">
+                  {{ item.available ? 'Available' : 'Unavailable' }}
+                </p>
+                <div class="product-actions">
+                  <span class="product-price">{{ money(item.price) }}</span>
+                  <button
+                    type="button"
+                    class="add-button"
+                    :disabled="!canAddItem(item)"
+                    :aria-label="`Add ${item.name} to order`"
+                    @click="addItem(item)"
+                  >
+                    Add to order
+                  </button>
+                </div>
               </div>
-            </div>
-          </article>
-        </section>
+            </article>
+          </section>
+        </template>
       </div>
     </div>
 
@@ -253,7 +303,9 @@ onMounted(() => {
       <button type="button" class="cancel-button" @click="cancelOrder">Cancel<br />Order</button>
       <div class="order-summary">
         <div>
-          <span class="order-type">{{ orderType }} · Sample menu</span>
+          <span class="order-type"
+            >{{ orderType }}<template v-if="isLocalMenuDemo"> · Sample menu</template></span
+          >
           <p class="total" aria-live="polite">Total: {{ money(total) }}</p>
         </div>
         <button
@@ -297,7 +349,7 @@ onMounted(() => {
                 type="button"
                 class="quantity-button"
                 :aria-label="`Increase ${item.name} quantity`"
-                :disabled="!item.available"
+                :disabled="!canAddItem(item)"
                 @click="addItem(item)"
               >
                 +
@@ -524,6 +576,21 @@ button:disabled {
 .menu-section {
   min-height: 100%;
   padding: 3vw 3vw 1vw 2.5vw;
+}
+.menu-message {
+  padding: 32px 24px;
+  color: #62634e;
+  font-size: clamp(18px, 2.4vw, 30px);
+  line-height: 1.5;
+}
+.menu-retry {
+  margin-top: 20px;
+  min-height: 48px;
+  padding: 12px 24px;
+  border: 0;
+  border-radius: 24px;
+  background: var(--olive);
+  color: #fff;
 }
 .menu-section h2 {
   font-size: clamp(24px, 3.5vw, 52px);

@@ -258,7 +258,7 @@ create table if not exists public.order_items (
   line_total numeric(10, 2) not null check (line_total >= 0)
 );
 
--- Enable Realtime on orders so the staff portal receives live updates.
+-- Enable Realtime on orders and products so the staff portal receives live updates.
 do $$
 begin
   if not exists (
@@ -269,6 +269,16 @@ begin
       and tablename = 'orders'
   ) then
     alter publication supabase_realtime add table public.orders;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'products'
+  ) then
+    alter publication supabase_realtime add table public.products;
   end if;
 end $$;
 
@@ -427,7 +437,8 @@ begin
     select * into v_product
     from public.products
     where id = v_item ->> 'id'
-      and available = true;
+      and available = true
+      and stock_quantity >= v_qty;
 
     if not found then
       raise exception 'Item unavailable.';
@@ -517,6 +528,48 @@ begin
 
   if not v_valid then
     raise exception 'Invalid status transition.';
+  end if;
+
+  if p_status = 'confirmed' then
+    -- Lock ordered product rows in deterministic order to avoid concurrent overselling or deadlocks.
+    perform 1
+    from public.products as product
+    where product.id in (
+      select product_id
+      from public.order_items
+      where order_id = v_order.id
+    )
+    order by product.id
+    for update;
+
+    if exists (
+      select 1
+      from (
+        select product_id, sum(quantity)::integer as quantity
+        from public.order_items
+        where order_id = v_order.id
+        group by product_id
+      ) as ordered
+      join public.products as product on product.id = ordered.product_id
+      where product.stock_quantity < ordered.quantity
+    ) then
+      raise exception 'Insufficient stock to accept this order.';
+    end if;
+
+    update public.products as product
+    set stock_quantity = product.stock_quantity - ordered.quantity,
+        available = case
+          when product.stock_quantity - ordered.quantity = 0 then false
+          else product.available
+        end,
+        updated_at = now()
+    from (
+      select product_id, sum(quantity)::integer as quantity
+      from public.order_items
+      where order_id = v_order.id
+      group by product_id
+    ) as ordered
+    where product.id = ordered.product_id;
   end if;
 
   update public.orders

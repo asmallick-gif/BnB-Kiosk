@@ -84,6 +84,8 @@ async function handleAdvance(payload: { order: KioskOrder; nextStatus: OrderStat
   try {
     await ordersStore.setOrderStatus(payload.order.token, payload.nextStatus)
     showToast(toastSummary(payload.order, payload.nextStatus))
+  } catch {
+    // Store sets errorMessage for the alert banner.
   } finally {
     busyToken.value = null
   }

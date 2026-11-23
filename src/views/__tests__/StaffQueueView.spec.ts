@@ -117,4 +117,27 @@ describe('StaffQueueView payment prompt and order lifecycle', () => {
 
     wrapper.unmount()
   })
+
+  it('displays an error alert and re-enables actions when accepting an order fails', async () => {
+    await submitOrder({
+      requestId: crypto.randomUUID(),
+      orderType: 'Dine-in',
+      paymentMethod: 'cash',
+      items: [{ id: 'best-sellers-1', quantity: 1 }],
+    })
+
+    const wrapper = await mountQueue()
+    // Simulate a backend rejection (e.g., insufficient stock or missing order)
+    window.localStorage.clear()
+
+    const proceedBtn = wrapper.get('.payment-prompt__btn--proceed')
+    await proceedBtn.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('.queue-error').text()).toContain('Order could not be found.')
+    expect(wrapper.find('.queue-toast').exists()).toBe(false)
+    expect(proceedBtn.attributes('disabled')).toBeUndefined()
+
+    wrapper.unmount()
+  })
 })

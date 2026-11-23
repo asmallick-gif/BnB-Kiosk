@@ -22,7 +22,11 @@ describe('order review', () => {
     })
     await router.push('/menu?type=take-out')
     await router.isReady()
-    wrapper = mount(MenuView, { attachTo: document.body, global: { plugins: [router] } })
+    wrapper = mount(MenuView, {
+      attachTo: document.body,
+      global: { plugins: [router] },
+    })
+    await flushPromises()
     wrapper.get('dialog').element.setAttribute('open', '')
   })
 

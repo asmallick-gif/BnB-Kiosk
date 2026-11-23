@@ -37,14 +37,20 @@ export const useStaffProductsStore = defineStore('staffProducts', () => {
 
   async function updateProduct(id: string, update: ProductStockUpdate): Promise<StaffProduct> {
     errorMessage.value = ''
-    const updated = await updateStaffProductStock(id, update)
-    const index = products.value.findIndex((item) => item.id === id)
-    if (index >= 0) {
-      products.value[index] = updated
-    } else {
-      await refresh()
+    try {
+      const updated = await updateStaffProductStock(id, update)
+      const index = products.value.findIndex((item) => item.id === id)
+      if (index >= 0) {
+        products.value[index] = updated
+      } else {
+        await refresh()
+      }
+      return updated
+    } catch (error) {
+      errorMessage.value =
+        error instanceof Error ? error.message : 'Unable to update item availability.'
+      throw error
     }
-    return updated
   }
 
   function startWatching(): () => void {
