@@ -37,7 +37,7 @@ The staff Waiting tab includes both pending and confirmed orders. Pending orders
 - Node.js **24.12.0 or newer**, or **22.18.0 or newer within the 22.x release line**, matching `package.json`.
 - npm, included with the standard [Node.js installer](https://nodejs.org/en/download).
 - [Git](https://git-scm.com/downloads) to clone the repository and manage branches.
-- A modern browser. VS Code with Vue (Official) is the recommended editor setup; additional extension recommendations are in [.vscode/extensions.json](.vscode/extensions.json).
+- A modern browser. VS Code with Vue (Official) is the recommended editor setup; additional extension recommendations are in [.vscode/extensions.json](../.vscode/extensions.json).
 
 Check your tools in a terminal:
 
@@ -98,9 +98,9 @@ Press Ctrl+C in the server terminal to stop the demo. Saved local preview data r
 
 Supabase setup is optional for the same-computer development demo. To use the configured backend:
 
-1. Follow [Staff backend setup](docs/staff-backend-setup.md) and apply [the database schema](docs/supabase-staff-schema.sql) to the intended Supabase project.
+1. Follow [Staff backend setup](staff-backend-setup.md) and apply [the database schema](supabase-staff-schema.sql) to the intended Supabase project.
 2. Seed the products table with catalog IDs and prices matching `src/data/menu.ts`.
-3. Create `.env.local` in the project root using [.env.example](.env.example):
+3. Create `.env.local` in the project root using [.env.example](../.env.example):
 
    ```dotenv
    VITE_SUPABASE_URL=your-project-url
@@ -171,9 +171,9 @@ ordering system/  Exported Figma reference images
 
 ## Existing technical documentation
 
-- [Kiosk order integration](docs/kiosk-order-integration.md): order states, request/response shapes, confirmation behavior, and tracking.
-- [Staff backend setup](docs/staff-backend-setup.md): local and separate-app modes, Supabase setup, and deployment notes.
-- [Supabase staff schema](docs/supabase-staff-schema.sql): database tables, functions, and access policies.
+- [Kiosk order integration](kiosk-order-integration.md): order states, request/response shapes, confirmation behavior, and tracking.
+- [Staff backend setup](staff-backend-setup.md): local and separate-app modes, Supabase setup, and deployment notes.
+- [Supabase staff schema](supabase-staff-schema.sql): database tables, functions, and access policies.
 
 These notes describe the intended setup and integration. A database script in the repository does not establish that it has been applied to a running Supabase project.
 

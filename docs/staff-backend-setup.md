@@ -21,6 +21,7 @@ In `dev:staff` mode, staff pages are mounted directly at the root:
 - `http://localhost:5174/queue`
 - `http://localhost:5174/availability`
 - `http://localhost:5174/records`
+- `http://localhost:5174/account`
 
 ### Option B: Same-Origin Preview (before Supabase is configured)
 When `.env.local` does not set Supabase keys, Vite dev mode uses `localStorage` for local preview orders. Because `localStorage` is scoped per origin (port), `npm run dev` also mounts the staff portal at `/staff/*` **in dev mode only**:
@@ -34,7 +35,7 @@ Any order submitted in Tab 1 appears in Tab 2's Queue so you can test `pending â
 | Target | Build command | Output folder | Routes included |
 | --- | --- | --- | --- |
 | Customer Kiosk | `npm run build` | `dist/` | `/`, `/menu`, `/order/:token` (zero staff code) |
-| Staff Portal | `npm run build:staff` | `dist-staff/` | `/login`, `/register`, `/queue`, `/availability`, `/records` |
+| Staff Portal | `npm run build:staff` | `dist-staff/` | `/login`, `/register`, `/queue`, `/availability`, `/records`, `/account` |
 
 To preview the production staff bundle locally:
 

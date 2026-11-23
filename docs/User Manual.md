@@ -1,7 +1,7 @@
 # BnB-Kiosk User Manual
 
 **Bake'n Brew · Customer kiosk and staff portal**  
-Application version: **1** · Reviewed: **2026**
+Repository version: **0.0.0** (draft) · Manual revision: **1** · Reviewed: **2026**
 
 This manual explains how customers place and track orders, and how staff manage orders, availability, records, and their account. It describes the current application.
 
@@ -13,7 +13,6 @@ Names, email addresses, orders, and sales figures shown are sample data; your va
 - [Customer guide](#customer-guide)
 - [Staff guide](#staff-guide)
 - [Troubleshooting](#troubleshooting)
-- [Current demo limitations](#current-demo-limitations)
 
 ## Before you begin
 
@@ -37,7 +36,7 @@ On the welcome screen, choose **Dine-in** to eat at the café or **Take-out** to
 
 1. Select a category, such as **Best Sellers**, **Starter**, or **Rice Meals**, to move to that section.
 2. Review the item names, photos, and prices.
-3. Use an item's **+** button to add it to your order. Add it again for another quantity.
+3. Use an item's **Add to order** button to add it to your order. Select it again for another quantity.
 4. Select **View my order** at the bottom to review your choices.
 
 The running total changes as you add items. **View my order** is unavailable while the order is empty.
