@@ -99,7 +99,7 @@ Press Ctrl+C in the server terminal to stop the demo. Saved local preview data r
 Supabase setup is optional for the same-computer development demo. To use the configured backend:
 
 1. Follow [Staff backend setup](staff-backend-setup.md) and apply [the database schema](supabase-staff-schema.sql) to the intended Supabase project.
-2. Seed the products table with catalog IDs and prices matching `src/data/menu.ts`.
+2. Run [the menu seed script](supabase-menu-seed.sql) in SQL Editor to populate `public.products` with the 27 catalog entries matching `src/data/menu.ts`.
 3. Create `.env.local` in the project root using [.env.example](../.env.example):
 
    ```dotenv
@@ -171,16 +171,17 @@ ordering system/  Exported Figma reference images
 
 ## Existing technical documentation
 
-- [Kiosk order integration](kiosk-order-integration.md): order states, request/response shapes, confirmation behavior, and tracking.
+- [API Documentation](<API Documentation.md>): Supabase REST, RPC, Auth, Realtime endpoints, error mapping, and sample requests.
 - [Staff backend setup](staff-backend-setup.md): local and separate-app modes, Supabase setup, and deployment notes.
-- [Supabase staff schema](supabase-staff-schema.sql): database tables, functions, and access policies.
+- [Supabase staff schema](supabase-staff-schema.sql): database tables, functions, stock deduction, Realtime publication, and access policies.
+- [Supabase menu seed](supabase-menu-seed.sql): idempotent SQL seed for the 27 menu items in `public.products`.
 
 These notes describe the intended setup and integration. A database script in the repository does not establish that it has been applied to a running Supabase project.
 
 ## Current limitations
 
 - Local preview accounts, orders, and inventory overrides are stored in the current browser. They are not shared with another computer, phone, browser profile, or origin.
-- The kiosk menu currently reads the catalog in `src/data/menu.ts`. Staff inventory changes are managed separately and do not automatically refresh the kiosk menu's displayed availability.
+- With Supabase configured, the kiosk loads live menu prices, availability, and stock limits from `public.products` on mount or retry (it does not push live Realtime updates onto an already-open kiosk menu screen). In unconfigured local dev preview, the kiosk uses the static sample menu in `src/data/menu.ts` separately from `bnb.demo-products`.
 - Cash/E-wallet is a payment-method choice. GCash/Maya payment processing and automatic payment verification are not implemented.
 - The tracking QR opens an order-status URL, not a payment page. A localhost QR does not provide phone access to this local demo.
 - Local preview stock starts with sample quantities, and the feedback button directs customers to the team rather than saving a feedback form.

@@ -39,7 +39,7 @@ On the welcome screen, choose **Dine-in** to eat at the café or **Take-out** to
 3. Use an item's **Add to order** button to add it to your order. Select it again for another quantity.
 4. Select **View my order** at the bottom to review your choices.
 
-The running total changes as you add items. **View my order** is unavailable while the order is empty.
+The running total changes as you add items. **View my order** is unavailable while the order is empty. Unavailable or out-of-stock items cannot be added, and quantities cannot exceed available stock when connected to Supabase. If the menu cannot be loaded, select **Try again**.
 
 ![Customer menu with category buttons, products, and order total](screenshots/user-manual/02-customer-menu.jpg)
 
@@ -197,7 +197,7 @@ Stock cannot go below zero. Zero stock makes an item unavailable. Increasing sto
 
 ![Availability page filtered to an unavailable zero-stock Spanish Latte](screenshots/user-manual/16-staff-availability.jpg)
 
-**Current limitation:** this page manages the staff inventory list. The customer kiosk currently uses a separate sample menu, so staff availability changes do not automatically disable that item on the customer menu. Confirm actual availability with the customer when handling an order.
+**Note on kiosk sync:** When Supabase is configured, stock and availability changes saved here (as well as automatic stock deductions when staff click **Proceed** on an incoming order) are reflected on the customer kiosk when the menu loads or reloads. In local browser-only preview without Supabase, the customer menu displays the static sample catalog separately.
 
 ### 6. Review records and export CSV
 

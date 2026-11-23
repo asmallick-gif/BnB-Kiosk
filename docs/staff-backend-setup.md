@@ -59,12 +59,13 @@ Configure SPA fallback (`/* → /index.html`) on both sites so direct links like
    ```sql
    select public.generate_staff_invitation('staff', 1, 72);
    ```
-3. Seed the `public.products` table with your menu catalog IDs and prices from `src/data/menu.ts`.
-4. Add `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` to `.env.local`.
+3. Run `docs/supabase-menu-seed.sql` in SQL Editor to seed `public.products` with all 27 menu items matching `src/data/menu.ts` (uses `on conflict (id) do nothing` so existing edits are preserved).
+4. Add `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` to `.env.local` (keep `.env.local` untracked).
 
 ## Security Measures Included
 
-- **SQL Injection Prevention:** All Supabase queries use parameterized RPCs (`create_kiosk_order`, `get_kiosk_order`, `staff_list_orders`, `staff_update_order_status`) with zero dynamic SQL concatenation, locked `search_path`, strict PostgreSQL `CHECK` constraints, and frontend allowlist validation (`src/lib/security.ts`).
+- **SQL Injection Prevention:** All Supabase mutations and order reads use parameterized RPCs (`create_kiosk_order`, `get_kiosk_order`, `staff_list_orders`, `staff_update_order_status`, `staff_update_product_availability`, `staff_update_own_profile`) with zero dynamic SQL concatenation, locked `search_path`, strict PostgreSQL `CHECK` constraints, and frontend allowlist validation (`src/lib/security.ts`, `src/services/products.ts`).
+- **Stock & Availability Integrity:** `create_kiosk_order` validates product availability and requested quantity against `public.products`; `staff_update_order_status` locks ordered product rows (`FOR UPDATE`), deducts stock atomically on `confirmed`, rejects insufficient stock, and marks `0`-stock items unavailable.
 - **Hashed Invitation Codes:** Raw invitation codes are never stored in `public.staff_invitations`; only SHA-256 digests are persisted, and direct client table access is revoked (`REVOKE ALL` + RLS).
 - **Row Level Security & Least Privilege:** Anonymous users cannot list orders, update statuses, or view staff accounts. Only active rows in `public.staff_profiles` can run staff RPCs.
 - **Brute-Force & Credential Hygiene:** Login attempts throttle after 5 consecutive failures; local dev preview hashes passwords with per-account salted SHA-256; internal redirects block open-redirect payloads (`//evil.com`, `/\evil.com`).

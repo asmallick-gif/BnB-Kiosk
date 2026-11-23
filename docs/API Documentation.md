@@ -44,6 +44,7 @@ Direct table access to `staff_invitations`, `staff_profiles`, `products`, `order
 
 | Scope | Limit or interval | Enforcement point |
 | --- | --- | --- |
+| Customer menu catalog fetch | **10-second request timeout** per fetch (`AbortController`) on mount or `Try again` | `listMenuProducts()` in `src/services/products.ts` |
 | Staff login attempts | Max **5 consecutive failures** per normalized email, followed by a **60-second lockout** | Client-side `createAttemptThrottle(5, 60_000)` in `src/lib/security.ts` |
 | Customer order tracking poll | **1 request every 2.5 seconds** (24 req/min per open tracker), serialized with an in-flight `refreshing` lock | `src/views/OrderStatusView.vue` |
 | Order creation deduplication | Duplicate submissions sharing a `requestId` UUID return the existing order without inserting | `public.orders(request_id)` `UNIQUE` constraint + `create_kiosk_order` |
@@ -86,7 +87,7 @@ Valid `status` values: `pending`, `confirmed`, `cooking`, `ready`, `completed`, 
 
 ### `POST` `/rest/v1/rpc/create_kiosk_order`
 
-Validates menu items and prices against `public.products`, calculates totals server-side, assigns a queue number, and stores a `pending` order. Retries with the same `requestId` return the existing order.
+Validates menu items, availability (`available = true`), stock (`stock_quantity >= quantity`), and prices against `public.products`, calculates totals server-side, assigns a queue number, and stores a `pending` order. Retries with the same `requestId` return the existing order.
 
 **Request URL**
 
@@ -390,7 +391,7 @@ curl -X POST "https://<project-ref>.supabase.co/rest/v1/rpc/staff_list_orders" \
 
 ### `POST` `/rest/v1/rpc/staff_update_order_status`
 
-Locks the target order row (`FOR UPDATE`), verifies the transition against the allowed state machine (`pending -> confirmed | rejected`, `confirmed -> cooking`, `cooking -> ready`, `ready -> completed`), records `updated_by = auth.uid()`, and returns the updated `KioskOrder`.
+Locks the target order row (`FOR UPDATE`), verifies the transition against the allowed state machine (`pending -> confirmed | rejected`, `confirmed -> cooking`, `cooking -> ready`, `ready -> completed`), records `updated_by = auth.uid()`, and returns the updated `KioskOrder`. When transitioning `pending -> confirmed`, the function also locks all ordered `public.products` rows (`FOR UPDATE`), verifies sufficient stock (raising `Insufficient stock to accept this order.` if any item is short), deducts ordered quantities from `stock_quantity`, and sets `available = false` for any item whose remaining stock reaches `0`.
 
 **Request URL**
 
@@ -412,7 +413,7 @@ https://<project-ref>.supabase.co/rest/v1/rpc/staff_update_order_status
 | Code | Description | Type | Example |
 | --- | --- | --- | --- |
 | `200` | Updated order record | `KioskOrder` (`object`) | `{ "token": "6b2f...", "queueNumber": 8, "status": "confirmed", ... }` |
-| `400` | Unauthorized, missing order, or invalid transition (`Order not found.`, `Invalid status transition.`) | `Error` (`object`) | `{ "code": "P0001", "message": "Invalid status transition." }` |
+| `400` | Unauthorized, missing order, invalid transition, or insufficient stock (`Order not found.`, `Invalid status transition.`, `Insufficient stock to accept this order.`) | `Error` (`object`) | `{ "code": "P0001", "message": "Insufficient stock to accept this order." }` |
 
 **Sample request**
 
@@ -429,7 +430,7 @@ curl -X POST "https://<project-ref>.supabase.co/rest/v1/rpc/staff_update_order_s
 
 ### `GET` `/rest/v1/products`
 
-Reads the product catalog and stock quantities ordered ascending by `id` (`listStaffProducts` in `src/services/staffProducts.ts`). If the table returns an empty list, the client falls back to `src/data/menu.ts` defaults.
+Reads the product catalog, availability flags, and stock quantities ordered ascending by `id`. Used by both the public customer kiosk (`listMenuProducts` in `src/services/products.ts`, with a 10-second `AbortController` timeout, strict row/duplicate validation, effective `available = row.available && row.stock_quantity > 0`, and no sample substitution when the table is empty) and the staff inventory page (`listStaffProducts` in `src/services/staffProducts.ts`). Seed the 27 default rows with [supabase-menu-seed.sql](supabase-menu-seed.sql).
 
 **Request URL**
 
@@ -443,7 +444,7 @@ https://<project-ref>.supabase.co/rest/v1/products?select=id,category_id,name,pr
 
 | Name | Required | Description | Type | Parameter Type | Example |
 | --- | --- | --- | --- | --- | --- |
-| `select` | optional | Columns projected by the staff portal. | `string` | `query` | `"id,category_id,name,price,available,stock_quantity"` |
+| `select` | optional | Columns projected by kiosk and staff clients. | `string` | `query` | `"id,category_id,name,price,available,stock_quantity"` |
 | `order` | optional | PostgREST sort expression. | `string` | `query` | `"id.asc"` |
 
 **Responses** · Response content type: `application/json`
@@ -533,7 +534,7 @@ Authenticated staff views receive live change notifications over Supabase Realti
 | `staff-orders-watch` | `postgres_changes` (`*`) | `public.orders` | Calls `staffOrdersStore.refresh()` to reload orders from `staff_list_orders` |
 | `staff-products-watch` | `postgres_changes` (`*`) | `public.products` | Calls `staffProductsStore.refresh()` to reload stock from `GET /rest/v1/products` |
 
-Both subscriptions are reference-counted inside Pinia (`startWatching()`) so mounted staff views share one open channel and unsubscribe cleanly on unmount.
+Both `public.orders` and `public.products` are added to the `supabase_realtime` publication in [supabase-staff-schema.sql](supabase-staff-schema.sql). Both subscriptions are reference-counted inside Pinia (`startWatching()`) so mounted staff views share one open channel and unsubscribe cleanly on unmount.
 
 ## 10. Error handling
 
@@ -564,10 +565,10 @@ Supabase Auth (GoTrue) errors:
 
 | HTTP Code | Meaning | How BnB-Kiosk handles it |
 | --- | --- | --- |
-| `200` / `204` | Success | Validates payload shape (`parseOrder` / type coercion) before updating Vue reactive state. |
-| `400` | PostgreSQL `RAISE EXCEPTION` (`P0001`), malformed UUID (`22P02`), or bad Auth input | Displays plain-language inline error or alert. `create_kiosk_order` maps backend errors to `Your order could not be sent. Please try again or ask the cashier.`; `loginStaff` increments the throttle counter and shows `Invalid email address or password.`. |
+| `200` / `204` | Success | Validates payload shape (`parseProduct`, `parseOrder`, or typed mappers) before updating Vue reactive state; malformed or duplicate product rows raise `The menu service returned an invalid response. Please ask the cashier.`. |
+| `400` | PostgreSQL `RAISE EXCEPTION` (`P0001`), malformed UUID (`22P02`), or bad Auth input | Displays plain-language inline error or alert. `create_kiosk_order` maps backend errors to `Your order could not be sent. Please try again or ask the cashier.`; `staff_update_order_status` failures (such as insufficient stock) populate `ordersStore.errorMessage` in `StaffQueueView.vue`; `loginStaff` increments the throttle counter and shows `Invalid email address or password.`. |
 | `401` / `403` | Expired/missing JWT or RLS/privilege denial | Navigation guard redirects unauthenticated visitors to `/login` (or `/staff/login`) with sanitized internal redirect path. |
 | `404` | Endpoint or resource missing (or `null` from `get_kiosk_order`) | `getOrder` throws `This order could not be found. Please ask the cashier.` without rendering a QR code or resubmitting. |
 | `422` | Unprocessable Auth payload (for example duplicate email or unchanged password) | Surfaces the Auth error message on the registration or account form. |
 | `429` | Supabase rate limit exceeded | Surfaces an error message; client login throttle separately prevents rapid password retries for 60 seconds after 5 failures. |
-| `500` / network failure | Server error or offline connection | `OrderStatusView.vue` keeps the last known order state visible, shows `Unable to check your order. Reconnecting…`, and retries automatically on the next 2.5-second tick or via `Check again`. |
+| `500` / timeout / network failure | Server error, 10s menu timeout, or offline connection | `MenuView.vue` shows `We could not load the menu. Please try again or ask the cashier.` with a `Try again` button and never substitutes sample items; `OrderStatusView.vue` keeps the last known order state visible, shows `Unable to check your order. Reconnecting…`, and retries automatically on the next 2.5-second tick or via `Check again`. |

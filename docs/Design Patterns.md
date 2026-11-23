@@ -17,7 +17,7 @@ This document records the software design patterns implemented in BnB-Kiosk. Eac
 | Design pattern | Main purpose | Where used in BnB-Kiosk |
 | --- | --- | --- |
 | Observer | Notifies dependent UI views when shared order or inventory state changes | `src/stores/staffOrders.ts`, `src/services/staffOrders.ts`, `src/stores/staffProducts.ts`, `src/views/staff/StaffShellView.vue` |
-| Repository | Separates data-access logic (Supabase RPC/REST and dev `localStorage`) from UI and business logic | `src/services/orders.ts`, `src/services/staffOrders.ts`, `src/services/staffProducts.ts`, `src/services/staffAuth.ts` |
+| Repository | Separates data-access logic (Supabase PostgREST/RPC and dev `localStorage`/sample preview) from UI and business logic | `src/services/products.ts`, `src/services/orders.ts`, `src/services/staffOrders.ts`, `src/services/staffProducts.ts`, `src/services/staffAuth.ts` |
 | Strategy | Makes filtering and sorting algorithms interchangeable behind a shared interface | `src/services/staffRecords.ts` (`isDateInRange` presets and `sortServedItemRows` comparators) |
 | Singleton | Controls access to one shared client instance or store state | `src/lib/supabase.ts` (`supabase` client) and Pinia store instances (`src/stores/*.ts`) |
 | Factory | Creates configured objects or route trees without tightly coupling callers to concrete definitions | `createStaffRoutes(prefix)` (`src/router/staffRoutes.ts`) and `createAttemptThrottle(...)` (`src/lib/security.ts`) |
@@ -138,25 +138,26 @@ Polling is still used intentionally on the public customer tracking page (`Order
 
 ### 2.7 Test evidence
 
-Executed `npm run test:unit -- --run --reporter=verbose` on `2026-11-23` (Vitest `4.1.12`): all **14 test files / 37 tests passed**.
+Executed `npm run test:unit -- --run --reporter=verbose` on `2026-11-23` (Vitest `4.1.12`): all **16 test files / 56 tests passed**.
 
 Tests verifying Observer-driven dashboard updates across mounted views:
 
-- `src/views/__tests__/StaffQueueView.spec.ts` (`1 passed`, 179ms): mounts `StaffShellView` (which calls `ordersStore.startWatching()` on mount and cleans up on unmount) with `StaffQueueView`. Verifies that pending orders submitted via `submitOrder` appear automatically in `WAITING`, cancelling `#002` removes its card and updates the queue, clicking `Proceed` unlocks `Start Cooking`, and clicking `Start Cooking` moves `#001` reactively into the `COOKING` tab.
-- `src/views/__tests__/StaffRecordsView.spec.ts` (`1 passed`, 232ms): mounts `StaffShellView` with `StaffRecordsView`, confirming that completed orders loaded through the shared store populate KPI cards (`Items served`, `Total sales`) while excluding cancelled orders.
-- `src/views/__tests__/StaffAvailabilityView.spec.ts` (`1 passed`, 258ms): mounts `StaffAvailabilityView` (which calls `productsStore.startWatching()`), verifies quantity adjustments (`-5` twice to `0`), automatic unavailable state updates, filter tab updates, and toast feedback.
+- `src/views/__tests__/StaffQueueView.spec.ts` (`2 passed`, 164ms + 29ms): mounts `StaffShellView` (which calls `ordersStore.startWatching()` on mount and cleans up on unmount) with `StaffQueueView`. Verifies that pending orders submitted via `submitOrder` appear automatically in `WAITING`, cancelling `#002` removes its card and updates the queue, clicking `Proceed` unlocks `Start Cooking`, clicking `Start Cooking` moves `#001` reactively into the `COOKING` tab, and failed order confirmations surface `.queue-error` while re-enabling actions.
+- `src/views/__tests__/StaffRecordsView.spec.ts` (`1 passed`, 203ms): mounts `StaffShellView` with `StaffRecordsView`, confirming that completed orders loaded through the shared store populate KPI cards (`Items served`, `Total sales`) while excluding cancelled orders.
+- `src/views/__tests__/StaffAvailabilityView.spec.ts` (`1 passed`, 222ms): mounts `StaffAvailabilityView` (which calls `productsStore.startWatching()`), verifies quantity adjustments (`-5` twice to `0`), automatic unavailable state updates, filter tab updates, and toast feedback.
 
 ```text
- ✓ src/views/__tests__/StaffQueueView.spec.ts > StaffQueueView payment prompt and order lifecycle > requires Proceed or Cancel on pending orders before unlocking Start Cooking 179ms
- ✓ src/views/__tests__/StaffRecordsView.spec.ts > StaffRecordsView > renders KPI summary, filters by order type and search, and excludes cancelled orders 232ms
- ✓ src/views/__tests__/StaffAvailabilityView.spec.ts > StaffAvailabilityView > toggles item availability, adjusts quantity by +/-1 and +/-5, filters, and shows toast 258ms
+ ✓ src/views/__tests__/StaffQueueView.spec.ts > StaffQueueView payment prompt and order lifecycle > requires Proceed or Cancel on pending orders before unlocking Start Cooking 164ms
+ ✓ src/views/__tests__/StaffQueueView.spec.ts > StaffQueueView payment prompt and order lifecycle > displays an error alert and re-enables actions when accepting an order fails 29ms
+ ✓ src/views/__tests__/StaffRecordsView.spec.ts > StaffRecordsView > renders KPI summary, filters by order type and search, and excludes cancelled orders 203ms
+ ✓ src/views/__tests__/StaffAvailabilityView.spec.ts > StaffAvailabilityView > toggles item availability, adjusts quantity by +/-1 and +/-5, filters, and shows toast 222ms
 ```
 
 ## 3. Primary pattern 2: Repository
 
 ### 3.1 Pattern name and definition
 
-**Repository (architectural / data-access pattern).** Encapsulates data retrieval, persistence, and response validation behind a domain-oriented interface so UI components and state stores operate on typed domain objects (`KioskOrder`, `StaffProduct`, `StaffUser`) without knowing how or where records are stored.
+**Repository (architectural / data-access pattern).** Encapsulates data retrieval, persistence, and response validation behind a domain-oriented interface so UI components and state stores operate on typed domain objects (`ProductCategory`, `KioskOrder`, `StaffProduct`, `StaffUser`) without knowing how or where records are stored.
 
 ### 3.2 Software problem it solves
 
@@ -198,7 +199,7 @@ export async function submitOrder(request: OrderRequest): Promise<KioskOrder> {
 }
 ```
 
-**2. Product inventory repository (`src/services/staffProducts.ts`, lines 59 to 64 and 119 to 175):** enforces boundary validation (`validateProductId`, `validateStockQuantity`, zero-stock unavailability rule) before persisting to either `staff_update_product_availability` or `bnb.demo-products`.
+**2. Product inventory repository (`src/services/staffProducts.ts`, lines 59 to 64 and 118 to 174) and customer product repository (`src/services/products.ts`, lines 61 to 115):** enforce boundary validation (`validateProductId`, `validateStockQuantity`, `parseProduct`, 10-second `AbortController` timeout, and the zero-stock unavailability rule) before reading or persisting to Supabase or dev preview storage.
 
 ```ts
 function normalizeUpdate(update: ProductStockUpdate): ProductStockUpdate {
@@ -252,19 +253,23 @@ export async function updateStaffProductStock(
 
 Executed `npm run test:unit -- --run --reporter=verbose` on `2026-11-23` (Vitest `4.1.12`):
 
+- `src/services/__tests__/products.spec.ts` (`14 passed`): proves `listMenuProducts` maps live API prices/names with local photos, marks zero-stock and unavailable items unavailable, preserves category order, keeps empty catalogs empty, rejects malformed/duplicate rows, aborts after 10 seconds, and retains the dev-only sample fallback.
+- `src/views/__tests__/MenuProductsView.spec.ts` (`4 passed`): proves `MenuView` shows loading without sample items, applies API prices and stock caps through review and checkout, displays retryable failure alerts, and handles empty catalogs cleanly.
 - `src/services/__tests__/orders.spec.ts` (`10 passed`): proves idempotent `requestId` retries create only one stored order, catalog prices compute server/repository-side totals (`360`), `isOrderConfirmed` gates QR tracking strictly on `confirmed`/`cooking`/`ready`/`completed`, invalid quantities (`0`, `-1`, `0.5`, `100`) are rejected without writing to storage, and unknown tokens throw without creating records.
 - `src/services/__tests__/staffOrders.spec.ts` (`2 passed`): proves `listStaffOrders` and `updateStaffOrderStatus` enforce the full lifecycle (`pending -> confirmed -> cooking -> ready -> completed`) and block skipped transitions (`pending -> ready`).
 - `src/services/__tests__/staffProducts.spec.ts` (`2 passed`): proves stock updates persist across reloads, `quantity: 0` forces `available: false`, SQL-injection-like product IDs (`best-sellers-1'; DROP TABLE products;--`) are rejected, and out-of-range quantities (`-1`, `1000`) fail validation.
 - `src/services/__tests__/staffAuth.spec.ts` (`3 passed`): proves invitation-code checks, salted SHA-256 hashing, duplicate-email rejection, and 5-failure lockout throttling inside the auth repository.
 
 ```text
+ ✓ src/services/__tests__/products.spec.ts (14 tests)
+ ✓ src/views/__tests__/MenuProductsView.spec.ts (4 tests)
  ✓ src/services/__tests__/orders.spec.ts (10 tests)
  ✓ src/services/__tests__/staffOrders.spec.ts (2 tests)
  ✓ src/services/__tests__/staffProducts.spec.ts (2 tests)
  ✓ src/services/__tests__/staffAuth.spec.ts (3 tests)
 
- Test Files  14 passed (14)
-      Tests  37 passed (37)
+ Test Files  16 passed (16)
+      Tests  56 passed (56)
 ```
 
 ## 4. Supporting patterns in BnB-Kiosk
