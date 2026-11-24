@@ -1,4 +1,5 @@
 import { menuCategories } from '@/data/menu'
+import { isValidUuid } from '@/lib/security'
 import { supabase } from '@/lib/supabase'
 
 export type OrderStatus = 'pending' | 'confirmed' | 'cooking' | 'ready' | 'completed' | 'rejected'
@@ -32,22 +33,44 @@ export interface OrderRequest {
 // It is deliberately unavailable in a production build.
 export const isLocalOrderDemo = !supabase && import.meta.env.DEV
 export const activeOrderKey = 'bnb.active-order'
-const localPrefix = 'bnb.demo-order.'
+export const localOrderPrefix = 'bnb.demo-order.'
 const acceptedStatuses: OrderStatus[] = ['confirmed', 'cooking', 'ready', 'completed']
+const validStatuses = new Set<OrderStatus>([
+  'pending',
+  'confirmed',
+  'cooking',
+  'ready',
+  'completed',
+  'rejected',
+])
 export const isOrderConfirmed = (order: KioskOrder) => acceptedStatuses.includes(order.status)
 export const queueLabel = (number: number) => `#${String(number).padStart(3, '0')}`
 
-function parseOrder(data: unknown): KioskOrder {
+export function parseOrder(data: unknown): KioskOrder {
   const order = data as KioskOrder
   if (
     !order ||
     typeof order.token !== 'string' ||
     !Number.isSafeInteger(order.queueNumber) ||
-    !['pending', 'confirmed', 'cooking', 'ready', 'completed', 'rejected'].includes(order.status)
+    !validStatuses.has(order.status) ||
+    !['Dine-in', 'Take-out'].includes(order.orderType) ||
+    !['cash', 'e-wallet'].includes(order.paymentMethod) ||
+    !Array.isArray(order.items) ||
+    typeof order.total !== 'number' ||
+    !Number.isFinite(order.total)
   ) {
     throw new Error('The order service returned an invalid response.')
   }
   return order
+}
+
+function tryReadStoredOrder(raw: string | null): KioskOrder | null {
+  if (!raw) return null
+  try {
+    return parseOrder(JSON.parse(raw))
+  } catch {
+    return null
+  }
 }
 
 export async function submitOrder(request: OrderRequest): Promise<KioskOrder> {
@@ -59,8 +82,8 @@ export async function submitOrder(request: OrderRequest): Promise<KioskOrder> {
   if (!isLocalOrderDemo)
     throw new Error('Ordering is unavailable. Please ask the cashier for help.')
   const create = () => {
-    const existing = window.localStorage.getItem(localPrefix + request.requestId)
-    if (existing) return parseOrder(JSON.parse(existing))
+    const existing = tryReadStoredOrder(window.localStorage.getItem(localOrderPrefix + request.requestId))
+    if (existing) return existing
     const catalog = menuCategories.flatMap((category) => category.items)
     if (
       !request.items.length ||
@@ -68,7 +91,12 @@ export async function submitOrder(request: OrderRequest): Promise<KioskOrder> {
       !['cash', 'e-wallet'].includes(request.paymentMethod)
     )
       throw new Error('Please review your order.')
+    const seenIds = new Set<string>()
     const items = request.items.map((entry) => {
+      if (seenIds.has(entry.id)) {
+        throw new Error('Please review the items and quantities in your order.')
+      }
+      seenIds.add(entry.id)
       const item = catalog.find((product) => product.id === entry.id && product.available)
       if (
         !item ||
@@ -86,8 +114,9 @@ export async function submitOrder(request: OrderRequest): Promise<KioskOrder> {
       }
     })
     const orders = Object.keys(window.localStorage)
-      .filter((key) => key.startsWith(localPrefix))
-      .map((key) => parseOrder(JSON.parse(window.localStorage.getItem(key)!)))
+      .filter((key) => key.startsWith(localOrderPrefix))
+      .map((key) => tryReadStoredOrder(window.localStorage.getItem(key)))
+      .filter((entry): entry is KioskOrder => entry !== null)
     const total = items.reduce((sum, item) => sum + item.lineTotal, 0)
     const order: KioskOrder = {
       token: crypto.randomUUID(),
@@ -102,7 +131,7 @@ export async function submitOrder(request: OrderRequest): Promise<KioskOrder> {
       status: 'pending',
       createdAt: new Date().toISOString(),
     }
-    window.localStorage.setItem(localPrefix + request.requestId, JSON.stringify(order))
+    window.localStorage.setItem(localOrderPrefix + request.requestId, JSON.stringify(order))
     return order
   }
   return navigator.locks ? navigator.locks.request('bnb-create-order', create) : create()
@@ -110,15 +139,18 @@ export async function submitOrder(request: OrderRequest): Promise<KioskOrder> {
 
 export async function getOrder(token: string): Promise<KioskOrder> {
   if (supabase) {
+    if (!isValidUuid(token)) {
+      throw new Error('This order could not be found. Please ask the cashier.')
+    }
     const { data, error } = await supabase.rpc('get_kiosk_order', { p_token: token })
     if (error) throw new Error('Unable to check your order. Reconnecting…')
     if (!data) throw new Error('This order could not be found. Please ask the cashier.')
     return parseOrder(data)
   }
   if (!isLocalOrderDemo) throw new Error('Order tracking is unavailable. Please ask the cashier.')
-  for (const key of Object.keys(window.localStorage).filter((key) => key.startsWith(localPrefix))) {
-    const order = parseOrder(JSON.parse(window.localStorage.getItem(key)!))
-    if (order.token === token) return order
+  for (const key of Object.keys(window.localStorage).filter((key) => key.startsWith(localOrderPrefix))) {
+    const order = tryReadStoredOrder(window.localStorage.getItem(key))
+    if (order?.token === token) return order
   }
   throw new Error('This order could not be found. Please ask the cashier.')
 }

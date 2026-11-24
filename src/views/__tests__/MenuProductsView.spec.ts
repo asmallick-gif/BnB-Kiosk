@@ -131,4 +131,21 @@ describe('customer menu API states', () => {
     await flushPromises()
     expect(screen.findAll('.menu-item')).toHaveLength(2)
   })
+
+  it('scrolls safely to categories whose slug starts with a digit', async () => {
+    vi.mocked(listMenuProducts).mockResolvedValueOnce([
+      {
+        id: '2-for-1',
+        name: '2 For 1 Deals',
+        items: catalog[0]!.items,
+      },
+    ])
+    const screen = await openMenu()
+    await flushPromises()
+
+    const scroller = screen.get('.menu-content').element as HTMLElement
+    scroller.scrollTo = vi.fn<() => void>()
+    await screen.get('button[data-category="2-for-1"]').trigger('click')
+    expect(scroller.scrollTo).toHaveBeenCalledTimes(1)
+  })
 })

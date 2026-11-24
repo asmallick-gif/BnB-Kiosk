@@ -46,6 +46,7 @@ describe('menu catalog and database seed integrity', () => {
     expect(new Set(ids).size).toBe(ids.length)
 
     const schemaSql = readFileSync(resolve(projectRoot, 'docs/supabase-staff-schema.sql'), 'utf8')
+    const menuSeedSql = readFileSync(resolve(projectRoot, 'docs/supabase-menu-seed.sql'), 'utf8')
 
     for (const { categoryId, item } of allItems) {
       expect(item.id).toMatch(/^[a-z0-9-]{1,64}$/)
@@ -59,6 +60,10 @@ describe('menu catalog and database seed integrity', () => {
       expect(
         schemaSql.includes(`('${item.id}', '${categoryId}',`),
         `Missing SQL seed row for ${item.id} in docs/supabase-staff-schema.sql`,
+      ).toBe(true)
+      expect(
+        menuSeedSql.includes(`('${item.id}', '${categoryId}',`),
+        `Missing SQL seed row for ${item.id} in docs/supabase-menu-seed.sql`,
       ).toBe(true)
     }
   })

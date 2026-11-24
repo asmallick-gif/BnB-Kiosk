@@ -57,4 +57,23 @@ describe('kiosk order lifecycle', () => {
     await expect(getOrder(crypto.randomUUID())).rejects.toThrow('could not be found')
     expect(window.localStorage.length).toBe(0)
   })
+
+  it('ignores malformed local preview entries instead of crashing order submission or lookup', async () => {
+    window.localStorage.setItem('bnb.demo-order.corrupted', '{not-json')
+    window.localStorage.setItem(
+      'bnb.demo-order.incomplete',
+      JSON.stringify({ token: 'bad', queueNumber: 1, status: 'pending' }),
+    )
+
+    const order = await submitOrder(request())
+    expect(order.queueNumber).toBe(1)
+    expect(await getOrder(order.token)).toEqual(order)
+  })
+
+  it('rejects duplicate product IDs in one order request without saving', async () => {
+    const input = request()
+    input.items.push({ id: 'best-sellers-1', quantity: 1 })
+    await expect(submitOrder(input)).rejects.toThrow('items and quantities')
+    expect(window.localStorage.length).toBe(0)
+  })
 })

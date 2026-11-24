@@ -105,7 +105,24 @@ describe('StaffRecordsView', () => {
       createdAt: nowIso,
     })
 
+    // Rejected order from an earlier month should not be counted in Today's cancelled footnote.
+    seedDemoOrder({
+      token: 'tok-21',
+      requestId: 'req-21',
+      queueNumber: 21,
+      orderType: 'Take-out',
+      paymentMethod: 'cash',
+      items: [{ id: 'starters-1', name: 'Classic Fries', quantity: 1, lineTotal: 130 }],
+      subtotal: 130,
+      discount: 0,
+      total: 130,
+      status: 'rejected',
+      createdAt: '2020-01-01T08:00:00.000Z',
+    })
+
     const wrapper = await mountRecords()
+
+    expect(wrapper.get('.records-footnote__note').text()).toContain('(1 cancelled)')
 
     const metricValues = wrapper.findAll('.summary-metric__value').map((n) => n.text())
     expect(metricValues[0]).toBe('5')

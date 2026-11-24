@@ -56,4 +56,17 @@ describe('staff order service (local preview)', () => {
       'Cannot change order from pending to ready',
     )
   })
+
+  it('ignores malformed local preview entries when updating a valid order', async () => {
+    window.localStorage.setItem('bnb.demo-order.corrupted', '{broken')
+    const created = await submitOrder({
+      requestId: crypto.randomUUID(),
+      orderType: 'Dine-in',
+      paymentMethod: 'cash',
+      items: [{ id: 'best-sellers-1', quantity: 1 }],
+    })
+
+    const confirmed = await updateStaffOrderStatus(created.token, 'confirmed')
+    expect(confirmed.status).toBe('confirmed')
+  })
 })

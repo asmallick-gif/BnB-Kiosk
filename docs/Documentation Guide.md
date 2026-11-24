@@ -99,7 +99,7 @@ Press Ctrl+C in the server terminal to stop the demo. Saved local preview data r
 Supabase setup is optional for the same-computer development demo. To use the configured backend:
 
 1. Follow [Staff backend setup](staff-backend-setup.md) and apply [the database schema](supabase-staff-schema.sql) to the intended Supabase project.
-2. Run [the menu seed script](supabase-menu-seed.sql) in SQL Editor to populate `public.products` with the 27 catalog entries matching `src/data/menu.ts`.
+2. Run [the menu seed script](supabase-menu-seed.sql) in SQL Editor to populate `public.products` with the 57 catalog entries matching `src/data/menu.ts`.
 3. Create `.env.local` in the project root using [.env.example](../.env.example):
 
    ```dotenv
@@ -174,7 +174,7 @@ ordering system/  Exported Figma reference images
 - [API Documentation](<API Documentation.md>): Supabase REST, RPC, Auth, Realtime endpoints, error mapping, and sample requests.
 - [Staff backend setup](staff-backend-setup.md): local and separate-app modes, Supabase setup, and deployment notes.
 - [Supabase staff schema](supabase-staff-schema.sql): database tables, functions, stock deduction, Realtime publication, and access policies.
-- [Supabase menu seed](supabase-menu-seed.sql): idempotent SQL seed for the 27 menu items in `public.products`.
+- [Supabase menu seed](supabase-menu-seed.sql): idempotent SQL seed for the 57 menu items in `public.products`.
 
 These notes describe the intended setup and integration. A database script in the repository does not establish that it has been applied to a running Supabase project.
 

@@ -1,8 +1,13 @@
 import { supabase } from '@/lib/supabase'
 import { isValidUuid } from '@/lib/security'
-import { isLocalOrderDemo, type KioskOrder, type OrderStatus } from '@/services/orders'
+import {
+  isLocalOrderDemo,
+  localOrderPrefix,
+  parseOrder,
+  type KioskOrder,
+  type OrderStatus,
+} from '@/services/orders'
 
-const localOrderPrefix = 'bnb.demo-order.'
 const validStatuses = new Set<OrderStatus>([
   'pending',
   'confirmed',
@@ -23,19 +28,6 @@ const allowedTransitions: Record<OrderStatus, OrderStatus[]> = {
 
 export function getAllowedNextStatuses(status: OrderStatus): OrderStatus[] {
   return allowedTransitions[status] ?? []
-}
-
-function parseOrder(data: unknown): KioskOrder {
-  const order = data as KioskOrder
-  if (
-    !order ||
-    typeof order.token !== 'string' ||
-    !Number.isSafeInteger(order.queueNumber) ||
-    !['pending', 'confirmed', 'cooking', 'ready', 'completed', 'rejected'].includes(order.status)
-  ) {
-    throw new Error('The order service returned an invalid order record.')
-  }
-  return order
 }
 
 function readLocalDemoOrders(): KioskOrder[] {
@@ -100,7 +92,12 @@ export async function updateStaffOrderStatus(
     if (!key.startsWith(localOrderPrefix)) continue
     const raw = window.localStorage.getItem(key)
     if (!raw) continue
-    const order = parseOrder(JSON.parse(raw))
+    let order: KioskOrder
+    try {
+      order = parseOrder(JSON.parse(raw))
+    } catch {
+      continue
+    }
     if (order.token !== token) continue
 
     if (!getAllowedNextStatuses(order.status).includes(nextStatus)) {

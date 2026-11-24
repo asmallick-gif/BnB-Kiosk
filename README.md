@@ -73,8 +73,6 @@ npm run test:e2e -- --debug
 npm run lint
 ```
 
-### Kiosk order confirmation
+### Kiosk & Staff Backend Setup
 
-See [the integration contract](docs/kiosk-order-integration.md) for the pending
-screen, staff confirmation statuses, QR tracking, local preview limitations,
-and the two Supabase RPCs needed by the separately developed staff backend.
+See [the staff backend & Supabase setup guide](docs/staff-backend-setup.md) for separate kiosk/staff URLs, Supabase schema and menu seeding, local preview limitations, and security controls.

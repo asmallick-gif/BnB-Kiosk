@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import QRCode from 'qrcode'
 import logo from '@/assets/logos/bnb-logo.svg'
+import { formatElapsedDuration, formatPhp } from '@/lib/format'
 import {
   activeOrderKey,
   getOrder,
@@ -20,6 +21,7 @@ const qr = ref('')
 const qrError = ref(false)
 const title = ref<HTMLHeadingElement | null>(null)
 const feedbackOpen = ref(false)
+const nowMs = ref(Date.now())
 const kiosk = computed(() => route.query.kiosk === '1')
 const confirmed = computed(() => !!order.value && isOrderConfirmed(order.value))
 const rejected = computed(() => order.value?.status === 'rejected')
@@ -32,8 +34,13 @@ const trackingUrl = computed(
       window.location.origin,
     ).href,
 )
-const money = (amount: number) =>
-  new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount)
+const money = formatPhp
+const isTerminalStatus = (status: KioskOrder['status'] | undefined) =>
+  status === 'completed' || status === 'rejected'
+const showElapsed = computed(() => Boolean(order.value && !isTerminalStatus(order.value.status)))
+const elapsedLabel = computed(() =>
+  order.value ? formatElapsedDuration(order.value.createdAt, nowMs.value) : '',
+)
 const progressLabel = computed(
   () =>
     ({
@@ -46,8 +53,29 @@ const progressLabel = computed(
     })[order.value?.status ?? 'pending'],
 )
 let timer: ReturnType<typeof setTimeout> | undefined
+let clockTimer: ReturnType<typeof setInterval> | undefined
 let alive = true
 let refreshing = false
+
+function stopClock() {
+  if (clockTimer !== undefined) {
+    clearInterval(clockTimer)
+    clockTimer = undefined
+  }
+}
+
+watch(showElapsed, (active) => {
+  if (active) {
+    nowMs.value = Date.now()
+    if (clockTimer === undefined) {
+      clockTimer = setInterval(() => {
+        nowMs.value = Date.now()
+      }, 1000)
+    }
+  } else {
+    stopClock()
+  }
+})
 
 async function refresh() {
   if (!alive || refreshing) return
@@ -65,7 +93,9 @@ async function refresh() {
         cause instanceof Error ? cause.message : 'Unable to check your order. Reconnecting…'
   } finally {
     refreshing = false
-    if (alive) timer = setTimeout(refresh, 2500)
+    if (alive && !isTerminalStatus(order.value?.status)) {
+      timer = setTimeout(refresh, 2500)
+    }
   }
 }
 watch(
@@ -102,18 +132,22 @@ function done() {
   }
   router.replace('/')
 }
+function refreshIfActive() {
+  if (!isTerminalStatus(order.value?.status)) void refresh()
+}
 onMounted(async () => {
   await refresh()
   if (!alive) return
   title.value?.focus()
-  window.addEventListener('storage', refresh)
-  window.addEventListener('online', refresh)
+  window.addEventListener('storage', refreshIfActive)
+  window.addEventListener('online', refreshIfActive)
 })
 onUnmounted(() => {
   alive = false
   clearTimeout(timer)
-  window.removeEventListener('storage', refresh)
-  window.removeEventListener('online', refresh)
+  stopClock()
+  window.removeEventListener('storage', refreshIfActive)
+  window.removeEventListener('online', refreshIfActive)
 })
 </script>
 
@@ -195,6 +229,10 @@ onUnmounted(() => {
             </ol>
           </template>
         </template>
+        <div v-if="showElapsed" class="elapsed-pill" aria-label="Time elapsed">
+          <span class="elapsed-pill__label">Time Elapsed</span>
+          <time class="elapsed-pill__time">{{ elapsedLabel }}</time>
+        </div>
         <p v-if="error" class="connection-error" role="alert">
           {{ error }} Your order will not be submitted again.
         </p>
@@ -355,6 +393,33 @@ h2 {
 .status-card .waiting-note {
   color: #62634e;
   font-size: clamp(16px, 2vw, 21px);
+}
+.elapsed-pill {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 156px;
+  margin-top: 28px;
+  padding: 10px 24px;
+  border-radius: 999px;
+  background: #fdf1d0;
+  color: #111;
+}
+.elapsed-pill__label {
+  color: #5c5746;
+  font-size: clamp(11px, 1.3vw, 13px);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+}
+.elapsed-pill__time {
+  margin-top: 2px;
+  font-size: clamp(18px, 2.4vw, 24px);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
 }
 .status-actions {
   display: grid;
