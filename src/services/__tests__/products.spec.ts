@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { menuCategories } from '@/data/menu'
 import { listMenuProducts } from '../products'
 
 type QueryResult = Promise<{ data: unknown; error: { message: string } | null }>
@@ -145,7 +146,8 @@ describe('customer product API', () => {
   it('retains the unconfigured development preview', async () => {
     api.client = null
     const categories = await listMenuProducts()
-    expect(categories.flatMap((category) => category.items)).toHaveLength(27)
+    const expectedItemCount = menuCategories.flatMap((category) => category.items).length
+    expect(categories.flatMap((category) => category.items)).toHaveLength(expectedItemCount)
     expect(categories[0]?.items[0]?.stockQuantity).toBeNull()
   })
 })

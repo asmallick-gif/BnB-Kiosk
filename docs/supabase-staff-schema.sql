@@ -401,6 +401,7 @@ declare
   v_order_id uuid;
   v_item jsonb;
   v_product public.products%rowtype;
+  v_seen_products text[] := '{}';
   v_qty integer;
   v_subtotal numeric(10, 2) := 0;
 begin
@@ -434,6 +435,10 @@ begin
       raise exception 'Invalid item quantity.';
     end if;
 
+    if (v_item ->> 'id') = any(v_seen_products) then
+      raise exception 'Duplicate product in order request.';
+    end if;
+
     select * into v_product
     from public.products
     where id = v_item ->> 'id'
@@ -443,6 +448,8 @@ begin
     if not found then
       raise exception 'Item unavailable.';
     end if;
+
+    v_seen_products := array_append(v_seen_products, v_product.id);
 
     insert into public.order_items (order_id, product_id, name, unit_price, quantity, line_total)
     values (v_order_id, v_product.id, v_product.name, v_product.price, v_qty, v_product.price * v_qty);
