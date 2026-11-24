@@ -162,10 +162,19 @@ export async function hashSecretWithSalt(secret: string, salt: string): Promise<
     .join('')
 }
 
+export function sanitizeAvatarUrl(raw: string | null | undefined): string {
+  try {
+    return validateAvatarValue(raw)
+  } catch {
+    return ''
+  }
+}
+
 export interface AttemptThrottle {
   checkAllowed: (key: string) => void
   recordFailure: (key: string) => void
   reset: (key: string) => void
+  clear: () => void
 }
 
 export function createAttemptThrottle(maxAttempts = 5, lockoutMs = 60_000): AttemptThrottle {
@@ -194,6 +203,9 @@ export function createAttemptThrottle(maxAttempts = 5, lockoutMs = 60_000): Atte
     },
     reset(key: string) {
       attempts.delete(key)
+    },
+    clear() {
+      attempts.clear()
     },
   }
 }

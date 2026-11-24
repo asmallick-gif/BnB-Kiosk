@@ -128,4 +128,19 @@ describe('staff authentication service (local preview + security checks)', () =>
     await expect(requestPasswordReset('not-an-email')).rejects.toThrow('work email')
     await expect(requestPasswordReset('ana@bakenbrew.ph')).resolves.toBeUndefined()
   })
+
+  it('strips unsafe avatar URLs when restoring a session from storage', async () => {
+    window.localStorage.setItem(
+      'bnb.staff.demo-session',
+      JSON.stringify({
+        id: 'staff-xss',
+        email: 'xss@bakenbrew.ph',
+        fullName: 'Safe Staff',
+        avatarUrl: 'javascript:alert(1)',
+      }),
+    )
+
+    const user = await getCurrentStaffUser()
+    expect(user?.avatarUrl).toBe('')
+  })
 })

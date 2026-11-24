@@ -72,4 +72,29 @@ describe('order submission', () => {
     expect(wrapper.get('.confirm-button').attributes('disabled')).toBeUndefined()
     wrapper.unmount()
   })
+
+  it('recovers cleanly when saved order-request sessionStorage is corrupted', async () => {
+    window.sessionStorage.setItem('bnb.order-request', '{corrupted-json')
+    vi.mocked(submitOrder).mockResolvedValue({
+      token: '550e8400-e29b-41d4-a716-446655440000',
+      requestId: 'req-1',
+      queueNumber: 1,
+      orderType: 'Dine-in',
+      paymentMethod: 'cash',
+      items: props.items,
+      subtotal: 180,
+      discount: 0,
+      total: 180,
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+    })
+
+    const { wrapper, router } = await checkout()
+    await wrapper.get('.confirm-button').trigger('click')
+    await flushPromises()
+
+    expect(submitOrder).toHaveBeenCalledTimes(1)
+    expect(router.currentRoute.value.name).toBe('order-status')
+    wrapper.unmount()
+  })
 })

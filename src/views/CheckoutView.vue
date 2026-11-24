@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import logo from '@/assets/logos/bnb-logo.svg'
 import { useRouter } from 'vue-router'
+import { formatPhp } from '@/lib/format'
 import { activeOrderKey, isLocalOrderDemo, submitOrder, type OrderRequest } from '@/services/orders'
 
 const props = defineProps<{
@@ -18,10 +19,22 @@ const title = ref<HTMLHeadingElement | null>(null)
 const router = useRouter()
 const isSubmitting = ref(false)
 const submissionError = ref('')
-const money = (amount: number) =>
-  new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount)
+const money = formatPhp
 
 onMounted(() => title.value?.focus())
+
+function readSavedOrderRequest(): { fingerprint: string; requestId: string } | null {
+  const saved = window.sessionStorage.getItem('bnb.order-request')
+  if (!saved) return null
+  try {
+    const parsed = JSON.parse(saved) as Partial<{ fingerprint: string; requestId: string }>
+    return typeof parsed.fingerprint === 'string' && typeof parsed.requestId === 'string'
+      ? { fingerprint: parsed.fingerprint, requestId: parsed.requestId }
+      : null
+  } catch {
+    return null
+  }
+}
 
 async function confirmOrder() {
   if (isSubmitting.value) return
@@ -33,10 +46,7 @@ async function confirmOrder() {
       paymentMethod: paymentMethod.value,
       items: props.items.map(({ id, quantity }) => ({ id, quantity })),
     }
-    const saved = window.sessionStorage.getItem('bnb.order-request')
-    const previous = saved
-      ? (JSON.parse(saved) as { fingerprint: string; requestId: string })
-      : null
+    const previous = readSavedOrderRequest()
     const fingerprint = JSON.stringify(payload)
     const requestId =
       previous?.fingerprint === fingerprint ? previous.requestId : crypto.randomUUID()

@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import logo from '@/assets/logos/bnb-logo.svg'
@@ -10,6 +10,7 @@ import {
   type ProductCategory,
 } from '@/services/products'
 import CheckoutView from './CheckoutView.vue'
+import { formatPhp } from '@/lib/format'
 import { activeOrderKey } from '@/services/orders'
 
 const route = useRoute()
@@ -47,8 +48,7 @@ const subtotal = computed(() =>
 )
 const discount = 0
 const total = computed(() => subtotal.value - discount)
-const money = (amount: number) =>
-  new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount)
+const money = formatPhp
 
 function updateActiveCategory() {
   const scroller = menuScroller.value
@@ -62,23 +62,35 @@ function updateActiveCategory() {
   activeCategory.value = current
 }
 
+const prefersReducedMotion = () =>
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
 function scrollToCategory(id: string) {
   const scroller = menuScroller.value
-  const section = scroller?.querySelector<HTMLElement>(`#${id}`)
+  const section = scroller
+    ? Array.from(scroller.querySelectorAll<HTMLElement>('.menu-section')).find(
+        (element) => element.id === id,
+      )
+    : undefined
   if (!scroller || !section) return
   scroller.scrollTo({
     top:
       scroller.scrollTop +
       section.getBoundingClientRect().top -
       scroller.getBoundingClientRect().top,
-    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+    behavior: prefersReducedMotion() ? 'instant' : 'smooth',
   })
 }
 
 watch(activeCategory, async (id) => {
   await nextTick()
   const nav = categoryNav.value
-  const button = nav?.querySelector<HTMLElement>(`[data-category="${id}"]`)
+  const button = nav
+    ? Array.from(nav.querySelectorAll<HTMLElement>('[data-category]')).find(
+        (element) => element.dataset.category === id,
+      )
+    : undefined
   if (!nav || !button) return
   const top = button.getBoundingClientRect().top - nav.getBoundingClientRect().top
   if (top < 0) nav.scrollBy({ top })
@@ -125,7 +137,7 @@ async function editOrder() {
 }
 function closeReview() {
   if (isClosingReview.value) return
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  if (prefersReducedMotion()) {
     reviewDialog.value?.close()
   } else {
     isClosingReview.value = true

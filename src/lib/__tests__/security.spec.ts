@@ -61,5 +61,12 @@ describe('security validation and sanitization helpers', () => {
     expect(() => throttle.checkAllowed('a@b.com')).toThrow('Too many failed attempts')
     throttle.reset('a@b.com')
     expect(() => throttle.checkAllowed('a@b.com')).not.toThrow()
+
+    throttle.recordFailure('b@b.com')
+    throttle.recordFailure('b@b.com')
+    throttle.recordFailure('b@b.com')
+    expect(() => throttle.checkAllowed('b@b.com')).toThrow('Too many failed attempts')
+    throttle.clear()
+    expect(() => throttle.checkAllowed('b@b.com')).not.toThrow()
   })
 })

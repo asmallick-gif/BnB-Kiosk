@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { formatPhp } from '@/lib/format'
 import type { StaffProduct } from '@/services/staffProducts'
 import { useStaffProductsStore } from '@/stores/staffProducts'
 import searchIcon from '@/assets/staff/available/search-icon.svg'
@@ -35,9 +36,7 @@ const filteredProducts = computed(() => {
   })
 })
 
-function formatPrice(price: number): string {
-  return `₱${price.toFixed(2)}`
-}
+const formatPrice = formatPhp
 
 function showToast(text: string, unavailable: boolean) {
   toastState.value = { text, unavailable }

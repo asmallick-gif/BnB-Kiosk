@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase'
 import {
   createAttemptThrottle,
   hashSecretWithSalt,
+  sanitizeAvatarUrl,
   timingSafeEqualString,
   validateAvatarValue,
   validateEmail,
@@ -90,12 +91,9 @@ const loginThrottle = createAttemptThrottle(5, 60_000)
 
 export function resetLoginThrottleForTests(): void {
   if (import.meta.env.MODE === 'test') {
-    throttleTrackedKeys.forEach((key) => loginThrottle.reset(key))
-    throttleTrackedKeys.clear()
+    loginThrottle.clear()
   }
 }
-
-const throttleTrackedKeys = new Set<string>()
 
 export function splitFullName(fullName: string): {
   firstName: string
@@ -169,7 +167,7 @@ function toStaffUser(
     lastName: extra?.lastName ?? split.lastName,
     middleInitial: extra?.middleInitial ?? split.middleInitial,
     homeAddress: extra?.homeAddress ?? '',
-    avatarUrl: extra?.avatarUrl ?? '',
+    avatarUrl: sanitizeAvatarUrl(extra?.avatarUrl),
     role: extra?.role ?? 'Staff',
     joinedAt: extra?.joinedAt,
     previousLoginAt: extra?.previousLoginAt,
@@ -201,7 +199,6 @@ export async function loginStaff(input: StaffLoginInput): Promise<StaffUser> {
   const email = validateEmail(input.email)
   const password = validateLoginPassword(input.password)
 
-  throttleTrackedKeys.add(email)
   loginThrottle.checkAllowed(email)
 
   if (supabase) {
@@ -349,8 +346,10 @@ export async function updateStaffProfile(input: StaffProfileUpdateInput): Promis
   const fullName = composeFullName(firstName, middleInitial, lastName)
 
   if (supabase) {
+    const { data: sessionData } = await supabase.auth.getSession()
+    const currentEmail = sessionData.session?.user?.email?.trim().toLowerCase()
     const { data: userData, error: authError } = await supabase.auth.updateUser({
-      email,
+      ...(email !== currentEmail ? { email } : {}),
       data: {
         full_name: fullName,
         first_name: firstName,

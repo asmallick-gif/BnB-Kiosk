@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { formatPhp } from '@/lib/format'
 import { isLocalOrderDemo } from '@/services/orders'
 import {
   buildRecordsCsv,
@@ -7,6 +8,7 @@ import {
   filterCompletedOrdersByDate,
   formatDateRangeSubtitle,
   formatRecordDateParts,
+  isDateInRange,
   sortServedItemRows,
   summarizeServedRecords,
   type DateRangePreset,
@@ -40,7 +42,10 @@ const completedOrdersInRange = computed(() =>
 )
 
 const cancelledCount = computed(
-  () => ordersStore.orders.filter((order) => order.status === 'rejected').length,
+  () =>
+    ordersStore.orders.filter(
+      (order) => order.status === 'rejected' && isDateInRange(order.createdAt, dateRange.value),
+    ).length,
 )
 
 const summary = computed(() => summarizeServedRecords(completedOrdersInRange.value))
@@ -78,12 +83,7 @@ const sortSummaryLabel = computed(() => {
   return `${labels[sortBy.value]} (${sortDirection.value === 'asc' ? 'A–Z / Low' : 'Z–A / High'})`
 })
 
-function formatCurrency(amount: number): string {
-  return `₱${amount.toLocaleString('en-PH', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`
-}
+const formatCurrency = formatPhp
 
 function toggleSort(column: RecordSortKey) {
   if (sortBy.value === column) {
