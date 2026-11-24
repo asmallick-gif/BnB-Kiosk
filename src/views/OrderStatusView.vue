@@ -132,19 +132,22 @@ function done() {
   }
   router.replace('/')
 }
+function refreshIfActive() {
+  if (!isTerminalStatus(order.value?.status)) void refresh()
+}
 onMounted(async () => {
   await refresh()
   if (!alive) return
   title.value?.focus()
-  window.addEventListener('storage', refresh)
-  window.addEventListener('online', refresh)
+  window.addEventListener('storage', refreshIfActive)
+  window.addEventListener('online', refreshIfActive)
 })
 onUnmounted(() => {
   alive = false
   clearTimeout(timer)
   stopClock()
-  window.removeEventListener('storage', refresh)
-  window.removeEventListener('online', refresh)
+  window.removeEventListener('storage', refreshIfActive)
+  window.removeEventListener('online', refreshIfActive)
 })
 </script>
 

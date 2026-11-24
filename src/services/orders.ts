@@ -91,7 +91,12 @@ export async function submitOrder(request: OrderRequest): Promise<KioskOrder> {
       !['cash', 'e-wallet'].includes(request.paymentMethod)
     )
       throw new Error('Please review your order.')
+    const seenIds = new Set<string>()
     const items = request.items.map((entry) => {
+      if (seenIds.has(entry.id)) {
+        throw new Error('Please review the items and quantities in your order.')
+      }
+      seenIds.add(entry.id)
       const item = catalog.find((product) => product.id === entry.id && product.available)
       if (
         !item ||

@@ -69,4 +69,11 @@ describe('kiosk order lifecycle', () => {
     expect(order.queueNumber).toBe(1)
     expect(await getOrder(order.token)).toEqual(order)
   })
+
+  it('rejects duplicate product IDs in one order request without saving', async () => {
+    const input = request()
+    input.items.push({ id: 'best-sellers-1', quantity: 1 })
+    await expect(submitOrder(input)).rejects.toThrow('items and quantities')
+    expect(window.localStorage.length).toBe(0)
+  })
 })

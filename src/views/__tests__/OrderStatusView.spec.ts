@@ -131,6 +131,9 @@ describe('OrderStatusView lifecycle, QR fallback, and polling', () => {
     expect(getOrder).toHaveBeenCalledTimes(1)
 
     await vi.advanceTimersByTimeAsync(10_000)
+    window.dispatchEvent(new Event('storage'))
+    window.dispatchEvent(new Event('online'))
+    await flushPromises()
     expect(getOrder).toHaveBeenCalledTimes(1)
   })
 })

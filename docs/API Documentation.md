@@ -108,7 +108,7 @@ https://<project-ref>.supabase.co/rest/v1/rpc/create_kiosk_order
 | Code | Description | Type | Example |
 | --- | --- | --- | --- |
 | `200` | Order created (or existing order returned for repeated `requestId`) | `KioskOrder` (`object`) | `{ "token": "...", "queueNumber": 8, "status": "pending", "total": 180, ... }` |
-| `400` | Validation failed (`Invalid order request.`, `Invalid item quantity.`, or `Item unavailable.`) | `Error` (`object`) | `{ "code": "P0001", "message": "Item unavailable." }` |
+| `400` | Validation failed (`Invalid order request.`, `Invalid item quantity.`, `Duplicate product in order request.`, or `Item unavailable.`) | `Error` (`object`) | `{ "code": "P0001", "message": "Item unavailable." }` |
 
 **Sample request**
 

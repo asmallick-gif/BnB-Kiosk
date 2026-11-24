@@ -18,7 +18,7 @@ This report records the test cases, expected and actual results, pass/fail statu
 
 | Quality gate | Command executed | Result | Summary |
 | --- | --- | --- | --- |
-| Unit and component tests | `npm run test:unit -- --run` | Pass | 17 of 17 test files passed; 66 of 66 tests passed |
+| Unit and component tests | `npm run test:unit -- --run` | Pass | 17 of 17 test files passed; 67 of 67 tests passed |
 | TypeScript / Vue type check | `npm run type-check` (`vue-tsc --build`) | Pass | Exit code `0`, zero type errors |
 | ESLint | `npm run lint:eslint` (`eslint . --fix --cache`) | Pass | Exit code `0`, zero errors or warnings |
 | Oxlint | `npm run lint:oxlint` (`oxlint . --fix`) | Pass | Exit code `0`, 0 errors and 0 warnings across 58 files (144 rules) |
@@ -174,8 +174,8 @@ This report records the test cases, expected and actual results, pass/fail statu
 | Test Case Id | Test Steps | Test Data | Expected Result | Actual Result | Status | Comments |
 | --- | --- | --- | --- | --- | --- | --- |
 | TC-08 | Run `npm run type-check` and `npx eslint .` | Full `src/` and `e2e/` | Exit code `0` with zero errors | Both exited `0` with zero diagnostics | Pass | Clean TypeScript and ESLint |
-| TC-08 | Run `npx oxlint .` (read-only) | 66 files, 144 rules | Exit code `0` with zero errors | Exit code `0`: 0 errors and 0 warnings | Pass | `DEF-01` to `DEF-03` resolved |
-| TC-08 | Run `npm run build` and `npm run build:staff` | Production Vite modes | Both succeed; `dist/` excludes all staff views | `dist/` built in 614ms (119 modules, zero staff chunks); `dist-staff/` built in 1.01s (135 modules) | Pass | Bundle isolation verified |
+| TC-08 | Run `npx oxlint .` (read-only) | 58 files, 144 rules | Exit code `0` with zero errors | Exit code `0`: 0 errors and 0 warnings | Pass | `DEF-01` to `DEF-03` and `DEF-07` resolved |
+| TC-08 | Run `npm run build` and `npm run build:staff` | Production Vite modes | Both succeed; `dist/` excludes all staff views | `dist/` built cleanly (119 modules, zero staff or `AboutView` chunks); `dist-staff/` built cleanly (136 modules) | Pass | Bundle isolation verified |
 
 ### TC-09: End-to-end browser order confirmation and responsive layouts
 
@@ -257,7 +257,7 @@ This report records the test cases, expected and actual results, pass/fail statu
 
 ## 4. Final quality assessment
 
-- **Functional correctness:** Strong for the documented scope. All **66 automated Vitest unit and component tests across 17 test files pass**, covering the 57-item menu catalog and SQL seed integrity, live customer product fetching and menu states, checkout idempotency and storage recovery, customer order status/QR/elapsed timer, staff authentication, queue lifecycle and confirmation-error alerts, inventory availability, sales records, CSV export, and account management.
+- **Functional correctness:** Strong for the documented scope. All **67 automated Vitest unit and component tests across 17 test files pass**, covering the 57-item menu catalog and SQL seed integrity, live customer product fetching and menu states, checkout idempotency and storage recovery, customer order status/QR/elapsed timer, staff authentication, queue lifecycle and confirmation-error alerts, inventory availability, sales records, CSV export, and account management.
 - **Security posture:** Well engineered for a student project. Inputs are validated at boundaries, `.env.local` stays untracked and isolated from unit tests, production builds fail closed without Supabase, SQL queries run through parameterized RPCs with RLS, row locking, and duplicate-item rejection, invitation codes are SHA-256 hashed, restored avatar URLs are sanitized, login attempts throttle after 5 failures, and CSV exports escape formula prefixes.
 - **Build and maintainability:** TypeScript type checking, Oxlint (`0` errors across 58 files), ESLint (`0` errors), and both isolated Vite production builds (`dist/` and `dist-staff/`) pass cleanly with starter scaffold files removed (`DEF-07`). Remaining low-priority items are hero image compression (`DEF-06`) and running Playwright E2E once Chromium is installed (`DEF-05`).
 - **Release readiness verdict:** **Ready for local and Supabase-backed school demonstration.** Before a live café production launch, apply updated `docs/supabase-staff-schema.sql` and `docs/supabase-menu-seed.sql` to the target Supabase project and run `npx playwright install` to verify all 7 Playwright E2E tests pass.
