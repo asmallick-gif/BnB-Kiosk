@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { formatElapsedDuration } from '@/lib/format'
 import { queueLabel, type KioskOrder, type OrderStatus } from '@/services/orders'
 import cardDivider from '@/assets/staff/dashboard/card-divider.svg'
 
@@ -27,16 +28,7 @@ function isItemChecked(itemId: string): boolean {
   return checkedItemIds.value.includes(itemId)
 }
 
-const elapsedLabel = computed(() => {
-  const created = Date.parse(props.order.createdAt)
-  const diffSeconds = Number.isNaN(created)
-    ? 0
-    : Math.max(0, Math.floor((props.nowMs - created) / 1000))
-  const hours = Math.floor(diffSeconds / 3600)
-  const minutes = Math.floor((diffSeconds % 3600) / 60)
-  const seconds = diffSeconds % 60
-  return [hours, minutes, seconds].map((unit) => String(unit).padStart(2, '0')).join(':')
-})
+const elapsedLabel = computed(() => formatElapsedDuration(props.order.createdAt, props.nowMs))
 
 const paymentSummary = computed(() => {
   const method = props.order.paymentMethod === 'e-wallet' ? 'E-wallet' : 'Cash'
