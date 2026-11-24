@@ -4,7 +4,7 @@ This document tracks verified defects, catalog discrepancies, security notes, an
 
 ## Open issues
 
-### ISSUE-01: Price mismatch between Best Sellers and category menu entries
+### ISSUE-01: Price mismatch between Best Sellers and category menu entries ([#2](https://github.com/asmallick-gif/BnB-Kiosk/issues/2))
 - Status: Open (needs cafe owner confirmation)
 - Severity: Medium
 - Area: Menu catalog (`src/data/menu.ts`, `docs/supabase-staff-schema.sql`)
@@ -14,28 +14,28 @@ This document tracks verified defects, catalog discrepancies, security notes, an
 - Current mitigation: Original `best-sellers` IDs, prices, and image paths were left untouched to preserve existing assumptions and tests.
 - Resolution criteria: Confirm canonical pricing with the business owner, align `src/data/menu.ts` and `docs/supabase-staff-schema.sql`, and update `src/data/__tests__/menu.spec.ts`.
 
-### ISSUE-02: Unused `supabase` import fails `oxlint` in `src/services/products.ts`
+### ISSUE-02: Unused `supabase` import fails `oxlint` in `src/services/products.ts` ([#3](https://github.com/asmallick-gif/BnB-Kiosk/issues/3))
 - Status: Open
 - Severity: Low
 - Area: Linting (`src/services/products.ts`)
 - Details: Line 1 imports `supabase` without referencing it, causing `npm run lint` (`oxlint`) to exit with code 1.
 - Resolution criteria: Either wire `src/services/products.ts` to query `public.products` through `supabase` or remove the unused import and verify `npm run lint` exits cleanly.
 
-### ISSUE-03: Full-resolution PNG menu images increase kiosk payload size
+### ISSUE-03: Full-resolution PNG menu images increase kiosk payload size ([#4](https://github.com/asmallick-gif/BnB-Kiosk/issues/4))
 - Status: Open
 - Severity: Medium
 - Area: Performance (`public/menu/`)
 - Details: The 30 newly added Figma product images average 1.7 to 2.1 MB each as PNG files, totaling roughly 58 MB on disk.
 - Resolution criteria: Batch-convert `public/menu/*.png` to compressed WebP (target under 150 KB per image), update paths in `src/data/menu.ts`, and confirm `src/data/__tests__/menu.spec.ts` passes.
 
-### ISSUE-04: E-wallet checkout requires manual cashier verification
+### ISSUE-04: E-wallet checkout requires manual cashier verification ([#5](https://github.com/asmallick-gif/BnB-Kiosk/issues/5))
 - Status: Open (planned enhancement)
 - Severity: Low (by design for V1)
 - Area: Payments (`src/views/CheckoutView.vue`, `docs/kiosk-order-integration.md`)
 - Details: Selecting E-wallet records payment intent for GCash/Maya at the counter and does not settle payment electronically.
 - Resolution criteria: Integrate a payment gateway webhook (such as PayMongo) to confirm paid e-wallet orders automatically while retaining manual confirmation for cash.
 
-### ISSUE-05: Manual SQL execution instead of versioned Supabase CLI migrations
+### ISSUE-05: Manual SQL execution instead of versioned Supabase CLI migrations ([#6](https://github.com/asmallick-gif/BnB-Kiosk/issues/6))
 - Status: Open
 - Severity: Low
 - Area: Database operations (`docs/supabase-staff-schema.sql`)
