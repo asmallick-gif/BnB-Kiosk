@@ -1,7 +1,7 @@
 # BnB-Kiosk Testing and Quality Report
 
 Bake'n Brew customer kiosk and staff portal  
-Branch: `main` (post-`api-integration` selective merge) · Executed: 2026-11-23
+Branch: `feat/cleanup-hardening-elapsed-timer` · Executed: 2026-11-24
 
 This report records the test cases, expected and actual results, pass/fail status, known defects, applied and recommended fixes, and overall quality assessment for BnB-Kiosk based on live automated checks run against the repository. It complements the [Software Requirements Specification](<Software Requirements Specification.md>) and [Technical Design](<Technical Design.md>).
 
@@ -18,14 +18,14 @@ This report records the test cases, expected and actual results, pass/fail statu
 
 | Quality gate | Command executed | Result | Summary |
 | --- | --- | --- | --- |
-| Unit and component tests | `npm run test:unit -- --run --reporter=verbose` | Pass | 16 of 16 test files passed; 56 of 56 tests passed in 14.84s |
+| Unit and component tests | `npm run test:unit -- --run` | Pass | 17 of 17 test files passed; 66 of 66 tests passed |
 | TypeScript / Vue type check | `npm run type-check` (`vue-tsc --build`) | Pass | Exit code `0`, zero type errors |
-| ESLint | `npx eslint .` | Pass | Exit code `0`, zero errors or warnings |
-| Oxlint | `npx oxlint .` | Pass | Exit code `0`, 0 errors and 0 warnings across 66 files (144 rules) |
-| Customer kiosk build | `npm run build` | Pass | Exit code `0`, 119 modules built into `dist/` in 614ms (zero staff chunks) |
-| Standalone staff build | `npm run build:staff` | Pass | Exit code `0`, 135 modules built into `dist-staff/` in 1.01s |
-| End-to-end browser tests | `npm run test:e2e -- --project=chromium` | Blocked | 7 of 7 tests failed at browser launch because Chromium binary (`chromium-1255`) is not installed (`npx playwright install` required) |
-| Dependency audit | `npm ci` audit summary | Warning | 5 moderate severity vulnerabilities reported in the npm dependency tree |
+| ESLint | `npm run lint:eslint` (`eslint . --fix --cache`) | Pass | Exit code `0`, zero errors or warnings |
+| Oxlint | `npm run lint:oxlint` (`oxlint . --fix`) | Pass | Exit code `0`, 0 errors and 0 warnings across 58 files (144 rules) |
+| Customer kiosk build | `npm run build` | Pass | Exit code `0`, 119 modules built into `dist/` (zero staff or `AboutView` chunks) |
+| Standalone staff build | `npm run build:staff` | Pass | Exit code `0`, 136 modules built into `dist-staff/` |
+| End-to-end browser tests | `npm run test:e2e -- --project=chromium` | Blocked | Browser binary (`chromium`) not installed in this checkout (`npx playwright install` required) |
+| Dependency audit | `npm audit` | Warning (Dev-only) | 5 moderate advisories inside dev-only `@vue/test-utils` -> `js-beautify` -> `glob`/`minimatch` (not shipped in production bundles) |
 
 ## 2. Detailed test cases
 
@@ -210,7 +210,26 @@ This report records the test cases, expected and actual results, pass/fail statu
 | TC-10 | Fetch live products with API price, zero stock, and new DB category | `Spanish Latte` (`185.50`, stock `3`), `stock_quantity: 0`, `special-drinks` | Preserves category order and local photos, marks zero-stock unavailable, leaves unknown photos blank | All assertions passed across 3 service tests | Pass | Verified in 9ms |
 | TC-10 | Feed malformed, negative-price, fractional-stock, invalid-slug, and duplicate rows | 7 malformed datasets; empty array `[]` | Empty array returns `[]` without sample fallback; all 7 malformed sets throw `invalid response` | Empty catalog stayed empty; all 7 malformed cases rejected | Pass | Strict response validation |
 | TC-10 | Simulate API error, network error, and 10-second hung request | Fake timers advanced `10_000ms` | Request aborts, timer clears (`0` pending), user-friendly message thrown | `signal.aborted === true`, `getTimerCount() === 0`, error matched | Pass | Verified in 5ms |
-| TC-10 | Mount `MenuView` across loading, API-priced cart/stock cap, failure retry, and empty catalog | `Spanish Latte` (`185.50`, stock `2`), `Iced Latte` (unavailable) | Loading hides sample items; unavailable item disabled; qty caps at `2`; failure and empty states retry cleanly | All 4 `MenuProductsView.spec.ts` checks passed | Pass | Verified in 460ms total |
+| TC-10 | Mount `MenuView` across loading, API-priced cart/stock cap, failure retry, and empty catalog | `Spanish Latte` (`185.50`, stock `2`), `Iced Latte` (unavailable), digit-prefixed slug `2-for-1` | Loading hides sample items; unavailable item disabled; qty caps at `2`; digit-prefixed slug scrolls safely; failure and empty states retry cleanly | All 5 `MenuProductsView.spec.ts` checks passed | Pass | Added selector/matchMedia safety check |
+
+### TC-11: Customer order status, live elapsed timer, and terminal polling stop
+
+| Field | Value |
+| --- | --- |
+| **Module Name** | Customer Order Status & Tracking (`src/views/OrderStatusView.vue`, `src/lib/format.ts`) |
+| **Test Case Id** | TC-11 |
+| **Created By** | Automated suite (`src/views/__tests__/OrderStatusView.spec.ts`) |
+| **Test Case Description** | Verify pending payment view, live ticking `Time Elapsed` counter across active states, QR generation and fallback alert, and polling/timer stop on terminal states (`completed`, `rejected`). |
+| **Preconditions** | Fake Vitest timers pinned to `2026-11-24T05:00:00.000Z`; mocked `getOrder` and `QRCode.toDataURL`. |
+| **Environment** | Windows, Node `v26.13.0`, Vitest `4.1.12` (JSDOM) |
+| **Scenario Name** | Poll `pending -> confirmed`, tick elapsed counter on customer tracking view, handle QR error, and halt timers on terminal statuses. |
+
+| Test Case Id | Test Steps | Test Data | Expected Result | Actual Result | Status | Comments |
+| --- | --- | --- | --- | --- | --- | --- |
+| TC-11 | Mount pending kiosk order and advance clock by `2500ms` | `createdAt` 90s prior, transitions `pending -> confirmed` | Shows `00:01:30`, transitions to Queue Number `#007` with `00:01:32` and QR image | All assertions matched | Pass | Covers kiosk waiting & QR unlock |
+| TC-11 | Mount customer tracking view in `cooking`, advance `2000ms`, then transition to `completed` | `createdAt` 6m50s prior | Displays `00:06:50` -> `00:06:52`, hides `.elapsed-pill` once `completed` | Ticked cleanly and hid pill on completion | Pass | Shared `formatElapsedDuration` matches staff card |
+| TC-11 | Reject `QRCode.toDataURL` promise | Confirmed kiosk order | Displays `QR code unavailable` fallback status | Fallback status rendered cleanly | Pass | Graceful degradation |
+| TC-11 | Mount `rejected` order and advance timers `10_000ms` | Rejected order | Hides elapsed pill and keeps `getOrder` at `1` call (polling stopped) | `getOrder` called once; no background polls | Pass | Prevents infinite polling |
 
 ## 3. Known defects and fixes
 
@@ -224,12 +243,13 @@ This report records the test cases, expected and actual results, pass/fail statu
 | DEF-04 | Medium | `src/views/MenuView.vue`, `src/services/products.ts`, `docs/supabase-staff-schema.sql` | Customer kiosk menu read static `menu.ts`, decoupled from `public.products` stock and availability | Resolved | Integrated `listMenuProducts()`, stock-capped cart controls, `docs/supabase-menu-seed.sql`, `public.products` Realtime publication, and atomic stock deduction on order confirmation. |
 | DEF-05 | Medium | `e2e/` test runner | Playwright E2E suite could not run in this checkout because browser binaries were not downloaded | Blocked (env) | Run `npx playwright install` and re-run `npm run test:e2e -- --project=chromium`, then record green output before final submission. |
 | DEF-06 | Low | `src/assets/staff/staff-hero.png`, `src/assets/images/welcome-background.jpg` | Large unoptimized images shipped in production bundles (`2.61 MB` PNG and `1.01 MB` JPEG) | Open | Convert and compress hero assets to WebP (target under 250 KB each) to speed up kiosk and staff first paint. |
-| DEF-07 | Low | `src/components/HelloWorld.vue`, `TheWelcome.vue`, `src/views/AboutView.vue`, `src/stores/counter.ts` | Unused Vue starter template files remain in `src/` and `AboutView` is still bundled into `dist/` | Open | Remove starter scaffold files, `/about` route, and `HelloWorld.spec.ts` once confirmed unneeded. |
-| DEF-08 | Low | `src/views/OrderStatusView.vue`, `src/components/staff/StaffOrderCard.vue` | No Vitest unit spec covers `OrderStatusView.vue` polling/QR fallback directly (covered only in E2E); item preparation checkboxes reset on page reload | Open | Add a Vitest spec for `OrderStatusView.vue` (polling retry, rejected screen, QR error fallback); decide if item checkboxes should persist in session state. |
-| DEF-09 | Low | `package-lock.json` | `npm ci` reported 5 moderate severity dependency advisories | Open | Run `npm audit` to inspect whether advisories affect runtime dependencies or dev tooling only, and upgrade affected packages individually. |
+| DEF-07 | Low | `src/components/HelloWorld.vue`, `TheWelcome.vue`, `src/views/AboutView.vue`, `src/stores/counter.ts` | Unused Vue starter template files remained in `src/` and `AboutView` was bundled into `dist/` | Resolved | Removed all 12 Vue starter scaffold files, `/about` route, `HelloWorld.spec.ts`, and unused `--vt-c-*` variables in `src/assets/base.css`. |
+| DEF-08 | Low | `src/views/OrderStatusView.vue`, `src/components/staff/StaffOrderCard.vue` | Missing unit coverage for `OrderStatusView.vue`; item preparation checkboxes reset on page reload | Partially resolved | Added `OrderStatusView.spec.ts` (4 tests covering polling, QR fallback, elapsed timer, and terminal polling stop). Staff item checklists remain local in-memory UI state. |
+| DEF-09 | Low | `package-lock.json` | `npm audit` reports 5 moderate severity advisories | Triaged (Dev-only) | Confirmed via `npm audit` all 5 advisories live under dev-only `@vue/test-utils` (`js-beautify` -> `glob`/`minimatch`) and are not shipped in `dist/` or `dist-staff/`. Avoid `npm audit fix --force` (which downgrades `@vue/test-utils`). |
 
 ### 3.2 Applied fixes verified in the repository
 
+- **Codebase audit, hardening, cleanup, and customer elapsed timer (`2026-11-24`):** Synced `docs/supabase-menu-seed.sql` and `products.spec.ts` to all 57 menu items (locked by `menu.spec.ts`), blocked duplicate product IDs in `create_kiosk_order`, guarded corrupted browser JSON storage in `CheckoutView.vue`, `orders.ts`, and `staffOrders.ts`, consolidated order parsing and PHP/elapsed formatting into shared helpers (`src/lib/format.ts`, `orders.ts`), sanitized restored avatar URLs in `staffAuth.ts`, fixed digit-prefixed category scrolling and `matchMedia` guards in `MenuView.vue`, scoped `StaffRecordsView.vue` cancelled count to the selected date range, removed all 12 Vue starter template files (`DEF-07`), added `<html lang="en">`, stopped polling on terminal order statuses, and added the live `Time Elapsed` pill to `OrderStatusView.vue` with unit tests (`OrderStatusView.spec.ts`).
 - **Selective `api-integration` merge, test isolation, and stock-deduction hardening:** Merged only the live menu/product API feature onto `main` (excluding committed `.env.local` credentials and `.gitignore` weakening from `620d7d4`, and omitting redundant `supabase-stock-deduction.sql`). Added `VITE_SUPABASE_*` overrides in `vitest.config.ts` so unit tests never accidentally hit a live Supabase database when a local `.env.local` exists, tightened `create_kiosk_order` and `staff_update_order_status` stock locking/deduction and `public.products` Realtime publication, wired error-banner handling in `StaffQueueView.vue` / `StaffAvailabilityView.vue`, and fixed all 8 Oxlint errors (`0` remaining).
 - **Idempotent checkout and double-tap protection (`8c0bf8f`):** Added client-generated `requestId` deduplication, disabled controls while submission is in flight, and verified with `CheckoutView.spec.ts` and `orders.spec.ts`.
 - **Cashier confirmation gate and security hardening (`282d59a`):** Added `Proceed`/`Cancel` payment confirmation before `Start Cooking`, SHA-256 hashed invitation codes, parameterized `SECURITY DEFINER` RPCs with RLS, open-redirect blocking, and 5-failure login throttling, verified by `StaffQueueView.spec.ts`, `staffAuth.spec.ts`, and `security.spec.ts`.
@@ -237,7 +257,7 @@ This report records the test cases, expected and actual results, pass/fail statu
 
 ## 4. Final quality assessment
 
-- **Functional correctness:** Strong for the documented scope. All **56 automated Vitest unit and component tests across 16 test files pass**, covering live customer product fetching and menu states, checkout idempotency, staff authentication, queue lifecycle and confirmation-error alerts, inventory availability, sales records, CSV export, and account management.
-- **Security posture:** Well engineered for a student project. Inputs are validated at boundaries, `.env.local` stays untracked and isolated from unit tests, production builds fail closed without Supabase, SQL queries run through parameterized RPCs with RLS and row locking, invitation codes are SHA-256 hashed, login attempts throttle after 5 failures, and CSV exports escape formula prefixes.
-- **Build and maintainability:** TypeScript type checking, Oxlint (`0` errors), ESLint (`0` errors), and both isolated Vite production builds (`dist/` and `dist-staff/`) pass cleanly. Remaining low-priority cleanup items are starter scaffold removal (`DEF-07`), hero image compression (`DEF-06`), `OrderStatusView` unit coverage (`DEF-08`), and running Playwright E2E once Chromium is installed (`DEF-05`).
-- **Release readiness verdict:** **Ready for local and Supabase-backed school demonstration on `main`.** Before a live café production launch, apply `docs/supabase-staff-schema.sql` and `docs/supabase-menu-seed.sql` to the target Supabase project, run `npx playwright install` to verify all 7 Playwright E2E tests pass, and review the 5 moderate npm audit advisories (`DEF-09`).
+- **Functional correctness:** Strong for the documented scope. All **66 automated Vitest unit and component tests across 17 test files pass**, covering the 57-item menu catalog and SQL seed integrity, live customer product fetching and menu states, checkout idempotency and storage recovery, customer order status/QR/elapsed timer, staff authentication, queue lifecycle and confirmation-error alerts, inventory availability, sales records, CSV export, and account management.
+- **Security posture:** Well engineered for a student project. Inputs are validated at boundaries, `.env.local` stays untracked and isolated from unit tests, production builds fail closed without Supabase, SQL queries run through parameterized RPCs with RLS, row locking, and duplicate-item rejection, invitation codes are SHA-256 hashed, restored avatar URLs are sanitized, login attempts throttle after 5 failures, and CSV exports escape formula prefixes.
+- **Build and maintainability:** TypeScript type checking, Oxlint (`0` errors across 58 files), ESLint (`0` errors), and both isolated Vite production builds (`dist/` and `dist-staff/`) pass cleanly with starter scaffold files removed (`DEF-07`). Remaining low-priority items are hero image compression (`DEF-06`) and running Playwright E2E once Chromium is installed (`DEF-05`).
+- **Release readiness verdict:** **Ready for local and Supabase-backed school demonstration.** Before a live café production launch, apply updated `docs/supabase-staff-schema.sql` and `docs/supabase-menu-seed.sql` to the target Supabase project and run `npx playwright install` to verify all 7 Playwright E2E tests pass.

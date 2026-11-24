@@ -96,7 +96,7 @@ On the kiosk's queue-number page, scroll down to find these actions:
 
 ### 7. Follow order progress
 
-The tracking page updates as staff change the order status.
+The tracking page updates as staff change the order status. While an order is active (waiting, confirmed, cooking, or ready), it also displays a live **Time Elapsed** counter matching the staff queue card; the counter stops and hides once the order is completed or cancelled.
 
 | Status    | Meaning                                 |
 | --------- | --------------------------------------- |

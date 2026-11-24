@@ -46,7 +46,7 @@ Direct table access to `staff_invitations`, `staff_profiles`, `products`, `order
 | --- | --- | --- |
 | Customer menu catalog fetch | **10-second request timeout** per fetch (`AbortController`) on mount or `Try again` | `listMenuProducts()` in `src/services/products.ts` |
 | Staff login attempts | Max **5 consecutive failures** per normalized email, followed by a **60-second lockout** | Client-side `createAttemptThrottle(5, 60_000)` in `src/lib/security.ts` |
-| Customer order tracking poll | **1 request every 2.5 seconds** (24 req/min per open tracker), serialized with an in-flight `refreshing` lock | `src/views/OrderStatusView.vue` |
+| Customer order tracking poll | **1 request every 2.5 seconds** (24 req/min per open active tracker), serialized with an in-flight `refreshing` lock; stops automatically on `completed` or `rejected` | `src/views/OrderStatusView.vue` |
 | Order creation deduplication | Duplicate submissions sharing a `requestId` UUID return the existing order without inserting | `public.orders(request_id)` `UNIQUE` constraint + `create_kiosk_order` |
 | Supabase Auth and API quotas | Project-tier limits on signup, login, recovery emails, REST throughput, and Realtime channels | Managed by Supabase Auth / API gateway (configurable in Supabase Dashboard; returns HTTP `429`) |
 
@@ -430,7 +430,7 @@ curl -X POST "https://<project-ref>.supabase.co/rest/v1/rpc/staff_update_order_s
 
 ### `GET` `/rest/v1/products`
 
-Reads the product catalog, availability flags, and stock quantities ordered ascending by `id`. Used by both the public customer kiosk (`listMenuProducts` in `src/services/products.ts`, with a 10-second `AbortController` timeout, strict row/duplicate validation, effective `available = row.available && row.stock_quantity > 0`, and no sample substitution when the table is empty) and the staff inventory page (`listStaffProducts` in `src/services/staffProducts.ts`). Seed the 27 default rows with [supabase-menu-seed.sql](supabase-menu-seed.sql).
+Reads the product catalog, availability flags, and stock quantities ordered ascending by `id`. Used by both the public customer kiosk (`listMenuProducts` in `src/services/products.ts`, with a 10-second `AbortController` timeout, strict row/duplicate validation, effective `available = row.available && row.stock_quantity > 0`, and no sample substitution when the table is empty) and the staff inventory page (`listStaffProducts` in `src/services/staffProducts.ts`). Seed the 57 default rows with [supabase-menu-seed.sql](supabase-menu-seed.sql).
 
 **Request URL**
 

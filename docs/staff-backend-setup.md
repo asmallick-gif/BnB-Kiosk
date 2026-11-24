@@ -59,7 +59,7 @@ Configure SPA fallback (`/* → /index.html`) on both sites so direct links like
    ```sql
    select public.generate_staff_invitation('staff', 1, 72);
    ```
-3. Run `docs/supabase-menu-seed.sql` in SQL Editor to seed `public.products` with all 27 menu items matching `src/data/menu.ts` (uses `on conflict (id) do nothing` so existing edits are preserved).
+3. Run `docs/supabase-menu-seed.sql` in SQL Editor to seed `public.products` with all 57 menu items matching `src/data/menu.ts` (uses `on conflict (id) do nothing` so existing edits are preserved).
 4. Add `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` to `.env.local` (keep `.env.local` untracked).
 
 ## Security Measures Included

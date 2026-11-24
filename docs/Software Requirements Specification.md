@@ -171,6 +171,7 @@ Development milestones recorded in the repository history:
 | Nov 19 to Nov 21 | Staff portal and security | Implemented standalone staff routing, invitation-code registration, login throttling, order queue (`Proceed`/`Cancel` and preparation stages), inventory availability page, served-order records with CSV export, account/avatar/password management, and Supabase SQL schema. |
 | Nov 22 | Project documentation | Added [Documentation Guide](<Documentation Guide.md>), [User Manual](<User Manual.md>), and 22 walkthrough screenshots. |
 | Nov 23 | Documentation suite and API integration | Added SRS, Technical Design, API Documentation, Design Patterns, Testing and Quality Report, and integrated live Supabase menu/product loading, `supabase-menu-seed.sql`, and stock deduction on order confirmation onto `main`. |
+| Nov 24 | Menu expansion, hardening, cleanup, and customer elapsed timer | Synced `supabase-menu-seed.sql` and test suite to 57 menu items, hardened `create_kiosk_order` against duplicate product IDs and client storage against malformed JSON, removed unused Vue starter template files, added `OrderStatusView` unit coverage and live customer `Time Elapsed` counter. |
 
 ### 7.2 Cost estimate
 
@@ -192,7 +193,7 @@ BnB-Kiosk is a student project built on open-source software and free-tier cloud
 - [API Documentation](<API Documentation.md>): Supabase PostgREST, RPC, Auth, Realtime contracts, polling rules, and error mapping.
 - [Staff Backend Setup](staff-backend-setup.md): two-URL architecture, deployment steps, and security controls.
 - [Supabase Staff Schema](supabase-staff-schema.sql): PostgreSQL tables, RLS policies, triggers, Realtime publication, and RPC definitions.
-- [Supabase Menu Seed](supabase-menu-seed.sql): idempotent 27-item catalog seed for `public.products`.
+- [Supabase Menu Seed](supabase-menu-seed.sql): idempotent 57-item catalog seed for `public.products`.
 - `ordering system/`: exported Figma screen references used to style the kiosk and staff portal.
 
 ### 8.2 Glossary
